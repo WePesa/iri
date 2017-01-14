@@ -1,0 +1,87 @@
+﻿TO DO:
+
+
+HIGH:
+
+1. check all the "put" and make the right check to see if exists!!  - ok     also for "get"
+
+2. Big-endian Little-endian
+
+3. util.copyOfRange vs arrays.copyOfRange?? - ok
+
+4. put my stuff in a different directories. - ok
+
+5. int rating = nonSeenTransactions[hash];
+   nonSeenTransactions.Add(hash, rating == null ? 1 : (rating + 1)); 
+   IRI-0.9.3\Tangle.cs(41,47,41,61): "The result of the expression is always 'false' since a value of type 'int' is never equal to 'null' of type 'int?'"  - ok : irrelevant
+
+6. File Position - ok
+
+
+MEDIUM:
+
+1. get the *.iri files both from debug\release directories or from current directory... (Current.Directory / AppDomain...)
+    any way they should not be included in this project.
+
+2. Dictionary<int?, int?>
+
+3. third party should be downloaded automatically. newtonsoft etc...
+
+4. check licenses. - ok
+
+5. to test also in release mode.
+
+6. To check Java List AddRange vs C# AddRange regarding duplicates.
+
+7. check arrays equals... & hashcode
+
+8. Arrays.equal
+
+9. why first send is all zeros??
+
+10. to fix storageLong (at the moment I thorw an exception)
+
+11. to add licensing stuff of others
+
+12. formatting of API responses.
+
+
+LOW:
+
+
+1. Are Type & Sort ToString() methods are being used? maybe in comparators...
+
+2. I took some stuff from specific SDK 7..8 and I need to keep an eye that there arn't any bug fixes and that they don't change...
+	    or to go a different route and to most of the stuff with .Net classes thats will give me the bug fixes for free.
+
+3. Socket socket = new Socket(Configuration.coordinator(), Node.PORT);
+    Actually a TCP transport... to ask cfb
+
+4. what is it with Buffer.BlockCopy??
+
+6. RandomLocalThread - I use I think only one seed for all and not each thread has a seed.
+
+7. working with byte sbyte socket etc...
+
+8. "jreFreeMemory\": " + string.Empty + ", \"jreMaxMemory\": " + string.Empty + ", \"jreTotalMemory:" - string.empty --> 
+    no jre here - maybe later I will change it to .Net framork stuff.
+
+9. is ThradLocalRandom is random for each Thread?
+
+
+GITHUB:
+
+1. before uploading to github not to foget to remove the nodes that are not default from nodes.iri
+
+
+FURTHER DEVELOPMENT:
+
+1. Multiplatform (.NET Core)
+
+2. Web API
+
+3. ARTIK Cloud
+
+4. To make it work also on thin OS's (Windows RT etc..)
+
+5. Perhaps also to make it work on an older dot net framworks.

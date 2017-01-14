@@ -1,0 +1,116 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="12.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{DADD3F64-A7C8-4DAC-BF4B-0D0073D1D6CE}</ProjectGuid>
+    <OutputType>Exe</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>iri</RootNamespace>
+    <AssemblyName>iri</AssemblyName>
+    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="Newtonsoft.Json, Version=9.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
+      <HintPath>..\packages\Newtonsoft.Json.9.0.1\lib\net45\Newtonsoft.Json.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="slf4net, Version=0.1.32.1, Culture=neutral, PublicKeyToken=592edb3b6b36b5ba, processorArchitecture=MSIL">
+      <HintPath>..\packages\slf4net.0.1.32.1\lib\net35\slf4net.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Numerics" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Bundle.cs" />
+    <Compile Include="csutils\ArithmeticHelper.cs" />
+    <Compile Include="csutils\Arrays.cs" />
+    <Compile Include="csutils\ConcurrentOrderedList.cs" />
+    <Compile Include="csutils\CopyOnWriteArrayList.cs" />
+    <Compile Include="csutils\DatagramPacket.cs" />
+    <Compile Include="csutils\DateTimeExtensions.cs" />
+    <Compile Include="csutils\EqualsBuilder.cs" />
+    <Compile Include="csutils\FuncComparer.cs" />
+    <Compile Include="csutils\HashCodeBuilder.cs" />
+    <Compile Include="csutils\HashSetExtensions.cs" />
+    <Compile Include="csutils\IPHelper.cs" />
+    <Compile Include="csutils\ListExtensions.cs" />
+    <Compile Include="csutils\Properties.cs" />
+    <Compile Include="csutils\ThreadLocalRandom.cs" />
+    <Compile Include="csutils\ToStringBuilder.cs" />
+    <Compile Include="hash\Curl.cs" />
+    <Compile Include="hash\ISS.cs" />
+    <Compile Include="hash\PearlDiver.cs" />
+    <Compile Include="IRI.cs" />
+    <Compile Include="Milestone.cs" />
+    <Compile Include="model\Hash.cs" />
+    <Compile Include="model\Transaction.cs" />
+    <Compile Include="Neighbor.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="service\API.cs" />
+    <Compile Include="service\dto\AbstractResponse.cs" />
+    <Compile Include="service\dto\AddedNeighborsResponse.cs" />
+    <Compile Include="service\dto\AttachToTangleResponse.cs" />
+    <Compile Include="service\dto\ErrorResponse.cs" />
+    <Compile Include="service\dto\ExceptionResponse.cs" />
+    <Compile Include="service\dto\FindTransactionsResponse.cs" />
+    <Compile Include="service\dto\GetBalancesResponse.cs" />
+    <Compile Include="service\dto\GetInclusionStatesResponse.cs" />
+    <Compile Include="service\dto\GetNeighborsResponse.cs" />
+    <Compile Include="service\dto\GetNodeInfoResponse.cs" />
+    <Compile Include="service\dto\GetTipsResponse.cs" />
+    <Compile Include="service\dto\GetTransactionsToApproveResponse.cs" />
+    <Compile Include="service\dto\GetTrytesResponse.cs" />
+    <Compile Include="service\dto\RemoveNeighborsResponse.cs" />
+    <Compile Include="service\Node.cs" />
+    <Compile Include="service\Storage.cs" />
+    <Compile Include="service\TipsManager.cs" />
+    <Compile Include="Snapshot.cs" />
+    <Compile Include="utils\Converter.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="App.config" />
+    <None Include="packages.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="docs\LICENSE.txt" />
+    <Content Include="docs\README.txt" />
+    <Content Include="docs\TODO.txt" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
+       Other similar extension points exist, see Microsoft.Common.targets.
+  <Target Name="BeforeBuild">
+  </Target>
+  <Target Name="AfterBuild">
+  </Target>
+  -->
+</Project>
