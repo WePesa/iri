@@ -64,7 +64,7 @@ LOW:
 7. working with byte sbyte socket etc...
 
 8. "jreFreeMemory\": " + string.Empty + ", \"jreMaxMemory\": " + string.Empty + ", \"jreTotalMemory:" - string.empty --> 
-    no jre here - maybe later I will change it to .Net framork stuff.
+    no jre here - maybe later I will change it to .Net framework stuff.
 
 9. is ThradLocalRandom is random for each Thread?
 
@@ -84,4 +84,6 @@ FURTHER DEVELOPMENT:
 
 4. To make it work also on thin OS's (Windows RT etc..)
 
-5. Perhaps also to make it work on an older dot net framworks.
+5. Perhaps also to make it work on an older dot net frameworks.
+
+6. Wallet
