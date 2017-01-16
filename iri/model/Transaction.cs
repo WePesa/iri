@@ -1,11 +1,17 @@
 using System;
 using System.Runtime.CompilerServices;
+using com.iota.iri.service.storage;
+
+// 1.1.2.3
 
 namespace com.iota.iri.model
 {
 
 	using Curl = com.iota.iri.hash.Curl;
-	using Storage = com.iota.iri.service.Storage;
+    using Storage = com.iota.iri.service.storage.Storage;
+    using AbstractStorage = com.iota.iri.service.storage.AbstractStorage;
+    using StorageTransactions = com.iota.iri.service.storage.StorageTransactions;
+
 	using Converter = com.iota.iri.utils.Converter;
 
 
@@ -53,12 +59,16 @@ namespace com.iota.iri.model
 		public readonly int type;
 		public readonly sbyte[] hash;
 
-		public readonly sbyte[] bytes;
+        public readonly byte[] bytes; // stores entire tx bytes. message occupies always first part named 'signatureMessageFragment'
+
 
 		public readonly sbyte[] address;
-		public readonly long value;
-		public readonly sbyte[] tag;
-		public readonly long currentIndex, lastIndex;
+
+        public readonly long value; // <0 spending transaction, >=0 deposit transaction / message    
+        public readonly byte[] tag; // milestone index only for milestone tx. Otherwise, arbitrary up to the tx issuer.
+        public readonly long currentIndex; // index of tx in the bundle
+        public readonly long lastIndex; // lastIndex is curIndex of the last tx from the same bundle
+
 		public readonly sbyte[] bundle;
 		public readonly sbyte[] trunkTransaction;
 		public readonly sbyte[] branchTransaction;
@@ -168,7 +178,8 @@ namespace com.iota.iri.model
 			Array.Copy(mainBuffer, BYTES_OFFSET, bytes = new sbyte[BYTES_SIZE], 0, BYTES_SIZE);
 
 			Array.Copy(mainBuffer, ADDRESS_OFFSET, address = new sbyte[ADDRESS_SIZE], 0, ADDRESS_SIZE);
-			value = Storage.value(mainBuffer, VALUE_OFFSET);
+            value = AbstractStorage.value(mainBuffer, VALUE_OFFSET);
+
 			Array.Copy(mainBuffer, TAG_OFFSET, tag = new sbyte[TAG_SIZE], 0, TAG_SIZE);
 			currentIndex = Storage.value(mainBuffer, CURRENT_INDEX_OFFSET);
 			lastIndex = Storage.value(mainBuffer, LAST_INDEX_OFFSET);
@@ -176,13 +187,15 @@ namespace com.iota.iri.model
 			Array.Copy(mainBuffer, TRUNK_TRANSACTION_OFFSET, trunkTransaction = new sbyte[TRUNK_TRANSACTION_SIZE], 0, TRUNK_TRANSACTION_SIZE);
 			Array.Copy(mainBuffer, BRANCH_TRANSACTION_OFFSET, branchTransaction = new sbyte[BRANCH_TRANSACTION_SIZE], 0, BRANCH_TRANSACTION_SIZE);
 
-			trunkTransactionPointer = Storage.transactionPointer(trunkTransaction);
+            trunkTransactionPointer = StorageTransactions.instance().transactionPointer(trunkTransaction);
+
 			if (trunkTransactionPointer < 0)
 			{
 
 				trunkTransactionPointer = -trunkTransactionPointer;
 			}
-			branchTransactionPointer = Storage.transactionPointer(branchTransaction);
+            branchTransactionPointer = StorageTransactions.instance().transactionPointer(branchTransaction);
+
 			if (branchTransactionPointer < 0)
 			{
 
@@ -212,7 +225,8 @@ namespace com.iota.iri.model
 		public static void dump(sbyte[] mainBuffer, sbyte[] hash, Transaction transaction)
 		{
 
-			Array.Copy(Storage.ZEROED_BUFFER, 0, mainBuffer, 0, Storage.CELL_SIZE);
+            Array.Copy(new byte[AbstractStorage.CELL_SIZE], 0, mainBuffer, 0, AbstractStorage.CELL_SIZE);
+
 			Array.Copy(hash, 0, mainBuffer, HASH_OFFSET, HASH_SIZE);
 
 			if (transaction == null)
@@ -237,7 +251,8 @@ namespace com.iota.iri.model
 				Array.Copy(transaction.trunkTransaction, 0, mainBuffer, TRUNK_TRANSACTION_OFFSET, TRUNK_TRANSACTION_SIZE);
 				Array.Copy(transaction.branchTransaction, 0, mainBuffer, BRANCH_TRANSACTION_OFFSET, BRANCH_TRANSACTION_SIZE);
 
-				long approvedTransactionPointer = Storage.transactionPointer(transaction.trunkTransaction);
+                long approvedTransactionPointer = StorageTransactions.instance().transactionPointer(transaction.trunkTransaction);
+
 				if (approvedTransactionPointer == 0)
 				{
 
@@ -252,17 +267,21 @@ namespace com.iota.iri.model
 						approvedTransactionPointer = -approvedTransactionPointer;
 					}
 
-					long index = (approvedTransactionPointer - (Storage.CELLS_OFFSET - Storage.SUPER_GROUPS_OFFSET)) >> 11;
-					// Storage.transactionsTipsFlags.put((int)(index >> 3), (sbyte)(Storage.transactionsTipsFlags.get((int)(index >> 3)) & (0xFF ^ (1 << (index & 7)))));
+                    long index = (approvedTransactionPointer - (AbstractStorage.CELLS_OFFSET - AbstractStorage.SUPER_GROUPS_OFFSET)) >> 11;
+
+                    //  StorageTransactions.instance().transactionsTipsFlags().put(
+                    //  (int)(index >> 3),
+                    //  (byte)(StorageTransactions.instance().transactionsTipsFlags().get((int)(index >> 3)) & (0xFF ^ (1 << (index & 7)))));
+
                     sbyte[] sbyteArray = new sbyte[1];
-                    Storage.transactionsTipsFlags.Read((byte[])(Array)sbyteArray, (int)(index >> 3), 1);
+                    StorageTransactions.instance().transactionsTipsFlags.Read((byte[])(Array)sbyteArray, (int)(index >> 3), 1);
                     sbyteArray[0] &= (sbyte)(0xFF ^ (1 << (int)(index & 7)));
-                    Storage.transactionsTipsFlags.Write((byte[])(Array)sbyteArray, (int)(index >> 3), 1);
+                    StorageTransactions.instance().transactionsTipsFlags.Write((byte[])(Array)sbyteArray, (int)(index >> 3), 1);
 				}
 				if (!Array.Equals(transaction.branchTransaction, transaction.trunkTransaction))
 				{
 
-					approvedTransactionPointer = Storage.transactionPointer(transaction.branchTransaction);
+					approvedTransactionPointer = StorageTransactions.instance().transactionPointer(transaction.branchTransaction);
 					if (approvedTransactionPointer == 0)
 					{
 
@@ -279,11 +298,15 @@ namespace com.iota.iri.model
 						}
 
 						long index = (approvedTransactionPointer - (Storage.CELLS_OFFSET - Storage.SUPER_GROUPS_OFFSET)) >> 11;
-						// Storage.transactionsTipsFlags.put((int)(index >> 3), (sbyte)(Storage.transactionsTipsFlags.get((int)(index >> 3)) & (0xFF ^ (1 << (index & 7)))));
+
+                        // StorageTransactions.instance().transactionsTipsFlags().put(
+                        // (int)(index >> 3),
+                        // (byte)(StorageTransactions.instance().transactionsTipsFlags().get((int)(index >> 3)) & (0xFF ^ (1 << (index & 7)))));
+
                         sbyte[] sbyteArray = new sbyte[1];
-                        Storage.transactionsTipsFlags.Read((byte[])(Array)sbyteArray, (int)(index >> 3), 1);
+                        StorageTransactions.instance().transactionsTipsFlags.Read((byte[])(Array)sbyteArray, (int)(index >> 3), 1);
                         sbyteArray[0] &= (sbyte)(0xFF ^ (1 << (int)(index & 7)));
-                        Storage.transactionsTipsFlags.Write((byte[])(Array)sbyteArray, (int)(index >> 3), 1);
+                        StorageTransactions.instance().transactionsTipsFlags.Write((byte[])(Array)sbyteArray, (int)(index >> 3), 1);
 					}
 				}
 			}

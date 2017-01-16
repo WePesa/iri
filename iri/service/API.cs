@@ -1,292 +1,313 @@
 using System;
 using System.Collections;
-using System.Collections.Generic;
 using System.IO;
-using System.Net;
-using System.Text;
+using System.Runtime.CompilerServices;
+using System.Collections.Generic;
+using com.iota.iri;
+using com.iota.iri.conf;
+using com.iota.iri.hash;
+using com.iota.iri.model;
+using com.iota.iri.service;
+using com.iota.iri.service.dto;
 using com.iota.iri.service.storage;
-using iri.utils;
-using Newtonsoft.Json;
+using com.iota.iri.utils;
 using slf4net;
-using System.Linq;
+
+
+// 1.1.2.3
 
 namespace com.iota.iri.service
 {
 
-    //using Gson = com.google.gson.Gson;
-    //using GsonBuilder = com.google.gson.GsonBuilder;
+	import static io.undertow.Handlers.path;
 
+
+	using com.iota.iri.service.dto;
+	using IOUtils = org.apache.commons.io.IOUtils;
+	using Logger = org.slf4j.Logger;
+	using LoggerFactory = org.slf4j.LoggerFactory;
+	using StreamSinkChannel = org.xnio.channels.StreamSinkChannel;
+	using ChannelInputStream = org.xnio.streams.ChannelInputStream;
+
+	using Gson = com.google.gson.Gson;
+	using GsonBuilder = com.google.gson.GsonBuilder;
 	using IRI = com.iota.iri.IRI;
 	using Milestone = com.iota.iri.Milestone;
 	using Neighbor = com.iota.iri.Neighbor;
 	using Snapshot = com.iota.iri.Snapshot;
+	using Configuration = com.iota.iri.conf.Configuration;
+	using DefaultConfSettings = com.iota.iri.conf.Configuration.DefaultConfSettings;
 	using Curl = com.iota.iri.hash.Curl;
 	using PearlDiver = com.iota.iri.hash.PearlDiver;
 	using Hash = com.iota.iri.model.Hash;
 	using Transaction = com.iota.iri.model.Transaction;
-	using com.iota.iri.service.dto;
+	using Storage = com.iota.iri.service.storage.Storage;
+	using StorageAddresses = com.iota.iri.service.storage.StorageAddresses;
+	using StorageApprovers = com.iota.iri.service.storage.StorageApprovers;
+	using StorageBundle = com.iota.iri.service.storage.StorageBundle;
+	using StorageScratchpad = com.iota.iri.service.storage.StorageScratchpad;
+	using StorageTags = com.iota.iri.service.storage.StorageTags;
+	using StorageTransactions = com.iota.iri.service.storage.StorageTransactions;
 	using Converter = com.iota.iri.utils.Converter;
 
-    //using Undertow = io.undertow.Undertow;
-    //using HttpServerExchange = io.undertow.server.HttpServerExchange;
-    //using Headers = io.undertow.util.Headers;
-    //using IOUtils = org.apache.commons.io.IOUtils;
-
-    //using ChannelInputStream = org.xnio.streams.ChannelInputStream;
-
+	using Undertow = io.undertow.Undertow;
+	using HttpHandler = io.undertow.server.HttpHandler;
+	using HttpServerExchange = io.undertow.server.HttpServerExchange;
+	using HeaderMap = io.undertow.util.HeaderMap;
+	using Headers = io.undertow.util.Headers;
+	using HttpString = io.undertow.util.HttpString;
 
 	public class API
 	{
 
-		private static readonly ILogger log = LoggerFactory.GetLogger(typeof(API));
+		private static readonly ILogger log = LoggerFactory.getLogger(typeof(API));
 
-        private static HttpListener server = new HttpListener();
-		private const int PORT = 14265;
+		private Undertow server;
 
-		private static readonly PearlDiver pearlDiver = new PearlDiver();
+		private readonly Gson gson = new GsonBuilder().create();
+		private readonly PearlDiver pearlDiver = new PearlDiver();
 
-		public static void launch()
+		private readonly AtomicInteger counter = new AtomicInteger(0);
+
+		public virtual void init()
 		{
 		    try
 		    {
-                server.Prefixes.Add(string.Format("http://localhost:{0}/", PORT));
-         
-                server.Start();
+		        int apiPort = Configuration.integer(Configuration.DefaultConfSettings.API_PORT);
+		        string apiHost = Configuration.
+		        string 
+		        (Configuration.DefaultConfSettings.API_HOST);
 
-                //                    server =
-                //    Undertow.builder().addHttpListener(PORT, "localhost").setHandler(path().addPrefixPath("/", exchange =>
-                //    {
-                //        ChannelInputStream cis = new ChannelInputStream(exchange.RequestChannel);
-                //        exchange.ResponseHeaders.put(Headers.CONTENT_TYPE, "application/json");
-                //        long beginningTime = DateTimeExtensions.currentTimeMillis();
-                //        string body = IOUtils.ToString(cis, StandardCharsets.UTF_8);
-                //        AbstractResponse response = process(body);
-                //        sendResponse(exchange, response, beginningTime);
-                //    })).build();
+		        log.debug("Binding JSON-REST API Undertown server on {}:{}", apiHost, apiPort);
 
-                //server.start()
-
-
-                // string response;
-                HttpListenerResponse exchange = null;
-
-		        while (server.IsListening) // !shutdown
-		        {	           
-                    HttpListenerContext context = server.GetContext();
-
-                    exchange = context.Response;
-
-                    HttpListenerRequest contextRequest = context.Request;
-
-                    if (contextRequest == null || contextRequest.HttpMethod != "POST" || !contextRequest.HasEntityBody)
-                    {
-                        continue;
-                    }
-
-                    long beginningTime = DateTimeExtensions.currentTimeMillis();
-
-                    string requestedString = GetRequestPostData(contextRequest);
-
-                    AbstractResponse response = process(requestedString);
-
-		            sendResponse(exchange, response, beginningTime);
-		        }
-
+		        server =
+		            Undertow.builder()
+		                .addHttpListener(apiPort, apiHost)
+		                .setHandler(path()
+		                    .addPrefixPath("/",
+		                        new HttpHandler()
+		                        { public
+		                        void handleRequest(final HttpServerExchange exchange) throws Exception { if (exchange.
+    InIoThread) { exchange.dispatch(this); return;
+		                        }
+		        processRequest(exchange);
 		    }
-            catch // HttpListenerException ex
+		    }
+		    )).
+		        build();
+		        server.start();
+		    }
+		    catch
 		    {
 		        throw new IOException();
 		    }
 		}
 
-		// private static readonly Gson gson = new GsonBuilder().create();
+		private void processRequest(HttpServerExchange exchange)
+		{
+		    try
+		    {
+		        ChannelInputStream cis = new ChannelInputStream(exchange.RequestChannel);
+		        exchange.ResponseHeaders.put(Headers.CONTENT_TYPE, "application/json");
 
-        private static AbstractResponse process(string requestString) // throws UnsupportedEncodingException ??
+		        long beginningTime = System.currentTimeMillis();
+		        string body = IOUtils.ToString(cis, StandardCharsets.UTF_8);
+		        AbstractResponse response = process(body);
+		        sendResponse(exchange, response, beginningTime);
+		    }
+		    catch
+		    {
+		        throw new IOException();
+		    }
+		}
+
+		private AbstractResponse process(string requestString) // how can it throw UnsupportedEncodingException ???
 		{
 
 			try
 			{
 
-                Dictionary<string, object> request = JsonConvert.DeserializeObject<Dictionary<string, object>>(requestString);
-				// IDictionary<string, object> request = gson.fromJson(requestString, typeof(IDictionary));
+				IDictionary<string, object> request = gson.fromJson(requestString, typeof(IDictionary));
+				if (request == null)
+				{
+					return ExceptionResponse.create("Invalid request payload: '" + requestString + "'");
+				}
 
 				string command = (string) request["command"];
-
 				if (command == null)
 				{
-					return ErrorResponse.create("'command' parameter has not been specified");
+					return ErrorResponse.create("COMMAND parameter has not been specified in the request.");
 				}
+
+				if (Configuration.string(Configuration.DefaultConfSettings.REMOTEAPILIMIT).Contains(command))
+				{
+					return AccessLimitedResponse.create("COMMAND " + command + " is not available on this node");
+				}
+
+				log.Info("# {} -> Requesting command '{}'", counter.incrementAndGet(), command);
 
 				switch (command)
 				{
 
-				case "addNeighbors":
-				{
+					case "addNeighbors":
+					{
+						IList<string> uris = (IList<string>) request["uris"];
+						log.debug("Invoking 'addNeighbors' with {}", uris);
+						return addNeighborsStatement(uris);
+					}
+					case "attachToTangle":
+					{
+						Hash trunkTransaction = new Hash((string) request["trunkTransaction"]);
+						Hash branchTransaction = new Hash((string) request["branchTransaction"]);
+						int minWeightMagnitude = (int)((double?) request["minWeightMagnitude"]);
+						IList<string> trytes = (IList<string>) request["trytes"];
 
-					IList<string> uris = (IList<string>) request["uris"];
-					return addNeighborsStatement(uris);
-				}
-				case "attachToTangle":
-				{
+						return attachToTangleStatement(trunkTransaction, branchTransaction, minWeightMagnitude, trytes);
+					}
+					case "broadcastTransactions":
+					{
+						IList<string> trytes = (IList<string>) request["trytes"];
+						log.debug("Invoking 'broadcastTransactions' with {}", trytes);
+						return broadcastTransactionStatement(trytes);
+					}
+					case "findTransactions":
+					{
+						return findTransactionStatement(request);
+					}
+					case "getBalances":
+					{
+						IList<string> addresses = (IList<string>) request["addresses"];
+						int threshold = (int)((double?) request["threshold"]);
+						return getBalancesStatement(addresses, threshold);
+					}
+					case "getInclusionStates":
+					{
+						IList<string> trans = (IList<string>) request["transactions"];
+						IList<string> tps = (IList<string>) request["tips"];
 
-					Hash trunkTransaction = new Hash((string) request["trunkTransaction"]);
+						if (trans == null || tps == null)
+						{
+							return ErrorResponse.create("getInclusionStates Bad Request.");
+						}
 
-					Hash branchTransaction = new Hash((string) request["branchTransaction"]);
+						if (invalidSubtangleStatus())
+						{
+							return ErrorResponse.create("This operations cannot be executed: The subtangle has not been updated yet.");
+						}
+						return getInclusionStateStatement(trans, tps);
+					}
+					case "getNeighbors":
+					{
+						return NeighborsStatement;
+					}
+					case "getNodeInfo":
+					{
+						return GetNodeInfoResponse.create(IRI.NAME, IRI.VERSION, Runtime.Runtime.availableProcessors(), Runtime.Runtime.freeMemory(), System.getProperty("java.version"), Runtime.Runtime.maxMemory(), Runtime.Runtime.totalMemory(), Milestone.latestMilestone, Milestone.latestMilestoneIndex, Milestone.latestSolidSubtangleMilestone, Milestone.latestSolidSubtangleMilestoneIndex, Node.instance().howManyNeighbors(), Node.instance().queuedTransactionsSize(), System.currentTimeMillis(), StorageTransactions.instance().tips().size(), StorageScratchpad.instance().NumberOfTransactionsToRequest);
+					}
+					case "getTips":
+					{
+						return TipsStatement;
+					}
+					case "getTransactionsToApprove":
+					{
+						int depth = (int)((double?) request["depth"]);
+						if (invalidSubtangleStatus())
+						{
+							return ErrorResponse.create("This operations cannot be executed: The subtangle has not been updated yet.");
+						}
+						return getTransactionToApproveStatement(depth);
+					}
+					case "getTrytes":
+					{
+						IList<string> hashes = (IList<string>) request["hashes"];
+						log.debug("Executing getTrytesStatement: {}", hashes);
+						return getTrytesStatement(hashes);
+					}
 
-					int minWeightMagnitude = (int)((double?) request["minWeightMagnitude"]);
+					case "interruptAttachingToTangle":
+					{
+						pearlDiver.cancel();
+						return AbstractResponse.createEmptyResponse();
+					}
+					case "removeNeighbors":
+					{
+						IList<string> uris = (IList<string>) request["uris"];
+						log.debug("Invoking 'removeNeighbors' with {}", uris);
+						return removeNeighborsStatement(uris);
+					}
 
-					IList<string> trytes = (IList<string>) request["trytes"];
-
-					return attachToTangleStatement(trunkTransaction, branchTransaction, minWeightMagnitude, trytes);
-				}
-				case "broadcastTransactions":
-				{
-
-					IList<string> trytes = (IList<string>) request["trytes"];
-					return broadcastTransactionStatement(trytes);
-				}
-				case "findTransactions":
-				{
-					return findTransactionStatement(request);
-				}
-				case "getBalances":
-				{
-
-					IList<string> addresses = (IList<string>) request["addresses"];
-
-					int threshold = (int)((double?) request["threshold"]);
-					return getBalancesStatement(addresses, threshold);
-				}
-				case "getInclusionStates":
-				{
-					IList<string> trans = (IList<string>) request["transactions"];
-
-					IList<string> tps = (IList<string>) request["tips"];
-					return getInclusionStateStatement(trans, tps);
-				}
-				case "getNeighbors":
-				{
-					return NeighborsStatement;
-				}
-				case "getNodeInfo":
-				{
-					return GetNodeInfoResponse.create(IRI.NAME, IRI.VERSION, Environment.ProcessorCount, 0, 0, 0, Milestone.latestMilestone, Milestone.latestMilestoneIndex, Milestone.latestSolidSubtangleMilestone, Milestone.latestSolidSubtangleMilestoneIndex, Node.neighbors.Count, Node.queuedTransactions.Count, DateTimeExtensions.currentTimeMillis(), Storage.tips().Count, Storage.numberOfTransactionsToRequest);
-				}
-				case "getTips":
-				{
-					return TipsStatement;
-				}
-				case "getTransactionsToApprove":
-				{
-
-					int depth = (int)((double?) request["depth"]);
-					return getTransactionToApproveStatement(depth);
-				}
-				case "getTrytes":
-				{
-
-					IList<string> hashes = (IList<string>) request["hashes"];
-					getTrytesStatement(hashes);
-				}
-
-				goto case "interruptAttachingToTangle";
-				case "interruptAttachingToTangle":
-				{
-					pearlDiver.interrupt();
-					return AbstractResponse.createEmptyResponse();
-				}
-				case "removeNeighbors":
-				{
-					IList<string> uris = (IList<string>) request["uris"];
-					return removeNeighborsStatement(uris);
-				}
-
-				case "storeTransactions":
-				{
-					IList<string> trytes = (IList<string>) request["trytes"];
-					return storeTransactionStatement(trytes);
-				}
-				default:
-					return ErrorResponse.create("Command '" + command + "' is unknown");
+					case "storeTransactions":
+					{
+						IList<string> trytes = (IList<string>) request["trytes"];
+						log.debug("Invoking 'storeTransactions' with {}", trytes);
+						return storeTransactionStatement(trytes);
+					}
+					default:
+						return ErrorResponse.create("Command [" + command + "] is unknown");
 				}
 
 			}
-			catch (Exception e) // throw UnsupportedEncodingException ???
+			catch (Exception e)
 			{
-				log.Error("API Exception: ", e);
-				return ExceptionResponse.create(e.Message);
+				log.error("API Exception: ", e);
+				return ExceptionResponse.create(e.LocalizedMessage);
 			}
 		}
 
-        public static string GetRequestPostData(HttpListenerRequest request)
-        {
-            //if (!request.HasEntityBody)
-            //{
-            //    return null;
-            //}
+		public static bool invalidSubtangleStatus()
+		{
+			return (Milestone.latestSolidSubtangleMilestoneIndex == Milestone.MILESTONE_START_INDEX);
+		}
 
-            using (Stream body = request.InputStream) // here we have data
-            {
-                using (StreamReader reader = new StreamReader(body, request.ContentEncoding))
-                {
-                    return reader.ReadToEnd();
-                }
-            }
-        }
-
-		private static AbstractResponse removeNeighborsStatement(IList<string> uris)
+		private AbstractResponse removeNeighborsStatement(IList<string> uris)
 		{
 		    try
 		    {
-		        int numberOfRemovedNeighbors = 0;
-
-		        foreach (string uriString in uris)
+		        AtomicInteger numberOfRemovedNeighbors = new AtomicInteger(0);
+		        uris.stream()
+		            .map(com.iota.iri.service.Node::uri)
+		            .map(Optional::get)
+		            .filter(u => "udp".Equals(u.Scheme))
+		            .forEach(u=>
 		        {
-		            Uri uri = new Uri(uriString);
-
-		            if (uri.Scheme != null && uri.Scheme.Equals("udp"))
+		            if (Node.instance().removeNeighbor(u))
 		            {
-		                var ipEndPoint = new IPEndPoint(Dns.GetHostEntry(uri.Host).AddressList[0], uri.Port);
-		                SocketAddress socketAddress = ipEndPoint.Serialize();
-
-		                if (Node.neighbors.Remove(new Neighbor(socketAddress)))
-		                {
-		                    numberOfRemovedNeighbors++;
-		                }
+		                numberOfRemovedNeighbors.incrementAndGet();
 		            }
 		        }
-		        return RemoveNeighborsResponse.create(numberOfRemovedNeighbors);
+		    )
+		        ;
+		        return RemoveNeighborsResponse.create(numberOfRemovedNeighbors.get());
 		    }
-		    catch (Exception e)
+		    catch
 		    {
 		        throw new UriFormatException();
 		    }
 		}
 
-		private static void getTrytesStatement(IList<string> hashes)
+		private AbstractResponse getTrytesStatement(IList<string> hashes)
 		{
-
-			List<string> elements = new List<string>();
-
+			IList<string> elements = new LinkedList<>();
 			foreach (string hash in hashes)
 			{
-				Transaction transaction = Storage.loadTransaction((new Hash(hash)).Sbytes());
-				elements.Add(transaction == null ? "null" : (Converter.trytes(transaction.Trits())));
+				Transaction transaction = StorageTransactions.instance().loadTransaction((new Hash(hash)).bytes());
+				if (transaction != null)
+				{
+					elements.Add(Converter.trytes(transaction.trits()));
+				}
 			}
-			GetTrytesResponse.create(elements);
+			return GetTrytesResponse.create(elements);
 		}
 
-		private static AbstractResponse getTransactionToApproveStatement(int depth)
+		[MethodImpl(MethodImplOptions.Synchronized)]
+		private AbstractResponse getTransactionToApproveStatement(int depth)
 		{
-
 			Hash trunkTransactionToApprove = TipsManager.transactionToApprove(null, depth);
 			if (trunkTransactionToApprove == null)
 			{
 				return ErrorResponse.create("The subtangle is not solid");
 			}
-
 			Hash branchTransactionToApprove = TipsManager.transactionToApprove(trunkTransactionToApprove, depth);
-
 			if (branchTransactionToApprove == null)
 			{
 				return ErrorResponse.create("The subtangle is not solid");
@@ -294,93 +315,68 @@ namespace com.iota.iri.service
 			return GetTransactionsToApproveResponse.create(trunkTransactionToApprove, branchTransactionToApprove);
 		}
 
-		private static AbstractResponse TipsStatement
+		private AbstractResponse TipsStatement
 		{
 			get
 			{
-
-				List<string> elements = new List<string>();
-
-				foreach (Hash tip in Storage.tips())
-				{
-					elements.Add(tip.ToString());
-				}
-				return GetTipsResponse.create(elements);
+				return GetTipsResponse.create(StorageTransactions.instance().tips().stream().map(Hash::toString).collect(Collectors.toList()));
 			}
 		}
 
-		private static AbstractResponse storeTransactionStatement(IList<string> trys)
+		private AbstractResponse storeTransactionStatement(IList<string> trys)
 		{
 			foreach (string trytes in trys)
 			{
 				Transaction transaction = new Transaction(Converter.trits(trytes));
-				Storage.storeTransaction(transaction.hash, transaction, false);
+				StorageTransactions.instance().storeTransaction(transaction.hash, transaction, false);
 			}
-
 			return AbstractResponse.createEmptyResponse();
 		}
 
-		private static AbstractResponse NeighborsStatement
+		private AbstractResponse NeighborsStatement
 		{
 			get
 			{
-				return GetNeighborsResponse.create(Node.neighbors);
+				return GetNeighborsResponse.create(Node.instance().Neighbors);
 			}
 		}
 
-
-		private static AbstractResponse getInclusionStateStatement(IList<string> trans, IList<string> tps)
+		private AbstractResponse getInclusionStateStatement(IList<string> trans, IList<string> tps)
 		{
 
-			List<Hash> transactions = new List<Hash>();
-
-			foreach (string transaction in trans)
-			{
-				transactions.Add((new Hash(transaction)));
-			}
-
-
-			List<Hash> tips = new List<Hash>();
-
-			foreach (string tip in tps)
-			{
-				tips.Add(new Hash(tip));
-			}
+			IList<Hash> transactions = trans.stream().map(s -> new Hash(s)).collect(Collectors.toList());
+			IList<Hash> tips = tps.stream().map(s -> new Hash(s)).collect(Collectors.toList());
 
 			int numberOfNonMetTransactions = transactions.Count;
-
 			bool[] inclusionStates = new bool[numberOfNonMetTransactions];
 
-			lock (Storage.analyzedTransactionsFlags)
+			lock (StorageScratchpad.instance().AnalyzedTransactionsFlags)
 			{
 
-				Storage.clearAnalyzedTransactionsFlags();
+				StorageScratchpad.instance().clearAnalyzedTransactionsFlags();
 
-				List<long?> nonAnalyzedTransactions = new List<long?>();
-
+				LinkedList<long?> nonAnalyzedTransactions = new LinkedList<>();
 				foreach (Hash tip in tips)
 				{
 
-					long pointer = Storage.transactionPointer(tip.Sbytes());
-
+					long pointer = StorageTransactions.instance().transactionPointer(tip.bytes());
 					if (pointer <= 0)
 					{
 						return ErrorResponse.create("One of the tips absents");
 					}
-					nonAnalyzedTransactions.Add(pointer);
+					nonAnalyzedTransactions.AddLast(pointer);
 				}
 
 				{
 					long? pointer;
 					MAIN_LOOP:
-					while ((pointer = nonAnalyzedTransactions.Poll()) != null)
+					while ((pointer = nonAnalyzedTransactions.RemoveFirst()) != null)
 					{
 
-						if (Storage.setAnalyzedTransactionFlag((long)pointer))
+						if (StorageScratchpad.instance().AnalyzedTransactionFlag = pointer)
 						{
 
-							Transaction transaction = Storage.loadTransaction((long)pointer);
-
+							Transaction transaction = StorageTransactions.instance().loadTransaction(pointer);
 							if (transaction.type == Storage.PREFILLED_SLOT)
 							{
 								return ErrorResponse.create("The subtangle is not solid");
@@ -389,7 +385,6 @@ namespace com.iota.iri.service
 							{
 
 								Hash transactionHash = new Hash(transaction.hash, 0, Transaction.HASH_SIZE);
-
 								for (int i = 0; i < inclusionStates.Length; i++)
 								{
 
@@ -404,109 +399,99 @@ namespace com.iota.iri.service
 										}
 									}
 								}
-								nonAnalyzedTransactions.Add(transaction.trunkTransactionPointer);
-								nonAnalyzedTransactions.Add(transaction.branchTransactionPointer);
+								nonAnalyzedTransactions.AddLast(transaction.trunkTransactionPointer);
+								nonAnalyzedTransactions.AddLast(transaction.branchTransactionPointer);
 							}
 						}
 					}
-
 					return GetInclusionStatesResponse.create(inclusionStates);
 				}
 			}
 		}
 
-
-		private static AbstractResponse findTransactionStatement(IDictionary<string, object> request)
+		private AbstractResponse findTransactionStatement(IDictionary<string, object> request)
 		{
-
-			HashSet<long?> bundlesTransactions = new HashSet<long?>();
-
+			Set<long?> bundlesTransactions = new HashSet<>();
 			if (request.ContainsKey("bundles"))
 			{
 				foreach (string bundle in (IList<string>) request["bundles"])
 				{
-					bundlesTransactions.UnionWith(Storage.bundleTransactions(Storage.bundlePointer((new Hash(bundle)).Sbytes())));
+					bundlesTransactions.addAll(StorageBundle.instance().bundleTransactions(StorageBundle.instance().bundlePointer((new Hash(bundle)).bytes())));
 				}
 			}
 
-			HashSet<long?> addressesTransactions = new HashSet<long?>();
-
+			Set<long?> addressesTransactions = new HashSet<>();
 			if (request.ContainsKey("addresses"))
 			{
-				foreach (string address in (IList<string>) request["addresses"])
+				IList<string> addresses = (IList<string>) request["addresses"];
+				log.debug("Searching: {}", addresses.stream().reduce((a, b) -> a += ',' + b));
+
+				foreach (string address in addresses)
 				{
-					addressesTransactions.UnionWith(Storage.addressTransactions(Storage.addressPointer((new Hash(address)).Sbytes())));
+					if (address.Length != 81)
+					{
+						log.error("Address {} doesn't look a valid address", address);
+					}
+					addressesTransactions.addAll(StorageAddresses.instance().addressTransactions(StorageAddresses.instance().addressPointer((new Hash(address)).bytes())));
 				}
 			}
 
-
-			HashSet<long?> tagsTransactions = new HashSet<long?>();
+			Set<long?> tagsTransactions = new HashSet<>();
 			if (request.ContainsKey("tags"))
 			{
 				foreach (string tag in (IList<string>) request["tags"])
 				{
-				    var thisTag = tag;
-					while (thisTag.Length < Curl.HASH_LENGTH / Converter.NUMBER_OF_TRITS_IN_A_TRYTE)
+					while (tag.Length < Curl.HASH_LENGTH / Converter.NUMBER_OF_TRITS_IN_A_TRYTE)
 					{
-						thisTag += Converter.TRYTE_ALPHABET[0];
+						tag += Converter.TRYTE_ALPHABET[0];
 					}
-					tagsTransactions.UnionWith(Storage.tagTransactions(Storage.tagPointer((new Hash(thisTag)).Sbytes())));
+					tagsTransactions.addAll(StorageTags.instance().tagTransactions(StorageTags.instance().tagPointer((new Hash(tag)).bytes())));
 				}
 			}
 
-			HashSet<long?> approveeTransactions = new HashSet<long?>();
-			;
+			Set<long?> approveeTransactions = new HashSet<>();
+
 			if (request.ContainsKey("approvees"))
 			{
 				foreach (string approvee in (IList<string>) request["approvees"])
 				{
-					approveeTransactions.UnionWith(Storage.approveeTransactions(Storage.approveePointer((new Hash(approvee)).Sbytes())));
+					approveeTransactions.addAll(StorageApprovers.instance().approveeTransactions(StorageApprovers.instance().approveePointer((new Hash(approvee)).bytes())));
 				}
 			}
 
-		    // jesus...
-			HashSet<long?> foundTransactions = (bundlesTransactions.Count == 0) ? ((addressesTransactions.Count == 0) ? ((tagsTransactions.Count == 0) ? ((approveeTransactions.Count == 0 )? new HashSet<long?>() : approveeTransactions) : tagsTransactions) : addressesTransactions) : bundlesTransactions;
+		    // need refactoring
+			Set<long?> foundTransactions = bundlesTransactions.Empty ? (addressesTransactions.Empty ? (tagsTransactions.Empty ? (approveeTransactions.Empty ? new HashSet<>() : approveeTransactions) : tagsTransactions) : addressesTransactions) : bundlesTransactions;
 
-			if (addressesTransactions != null)
+			if (!addressesTransactions.Empty)
 			{
-                foundTransactions = foundTransactions.Where(item => addressesTransactions.Contains(item)).ToHashSet();
+				foundTransactions.retainAll(addressesTransactions);
 			}
-			if (tagsTransactions != null)
+			if (!tagsTransactions.Empty)
 			{
-                foundTransactions = foundTransactions.Where(item => tagsTransactions.Contains(item)).ToHashSet();
+				foundTransactions.retainAll(tagsTransactions);
 			}
-			if (approveeTransactions != null)
+			if (!approveeTransactions.Empty)
 			{
-                foundTransactions = foundTransactions.Where(item => approveeTransactions.Contains(item)).ToHashSet();
+				foundTransactions.retainAll(approveeTransactions);
 			}
 
-
-			List<string> elements = new List<string>();
-
-			foreach (long pointer in foundTransactions)
-			{
-				elements.Add(new Hash(Storage.loadTransaction(pointer).hash, 0, Transaction.HASH_SIZE).ToString());
-			}
+			IList<string> elements = foundTransactions.stream().map(pointer -> new Hash(StorageTransactions.instance().loadTransaction(pointer).hash, 0, Transaction.HASH_SIZE).ToString()).collect(Collectors.toCollection(LinkedList::new));
 
 			return FindTransactionsResponse.create(elements);
 		}
 
-
-		private static AbstractResponse broadcastTransactionStatement(IList<string> trytes2)
+		private AbstractResponse broadcastTransactionStatement(IList<string> trytes2)
 		{
 			foreach (string tryte in trytes2)
 			{
-
 				Transaction transaction = new Transaction(Converter.trits(tryte));
 				transaction.weightMagnitude = Curl.HASH_LENGTH;
-				Node.broadcast(transaction);
+				Node.instance().broadcast(transaction);
 			}
-
 			return AbstractResponse.createEmptyResponse();
 		}
 
-
-		private static AbstractResponse getBalancesStatement(IList<string> addrss, int threshold)
+		private AbstractResponse getBalancesStatement(IList<string> addrss, int threshold)
 		{
 
 			if (threshold <= 0 || threshold > 100)
@@ -514,45 +499,36 @@ namespace com.iota.iri.service
 				return ErrorResponse.create("Illegal 'threshold'");
 			}
 
-			List<Hash> addresses = new List<Hash>();
+			IList<Hash> addresses = addrss.stream().map(address -> (new Hash(address))).collect(Collectors.toCollection(LinkedList::new));
 
-			foreach (string address in addrss)
-			{
-				addresses.Add((new Hash(address)));
-			}
-
-			IDictionary<Hash, long?> balances = new Dictionary<Hash, long?>();
-
+			IDictionary<Hash, long?> balances = new Dictionary<>();
 			foreach (Hash address in addresses)
 			{
 				balances.Add(address, Snapshot.initialState.ContainsKey(address) ? Snapshot.initialState[address] : Convert.ToInt64(0));
 			}
 
 			Hash milestone = Milestone.latestSolidSubtangleMilestone;
-
 			int milestoneIndex = Milestone.latestSolidSubtangleMilestoneIndex;
 
-			lock (Storage.analyzedTransactionsFlags)
+			lock (StorageScratchpad.instance().AnalyzedTransactionsFlags)
 			{
 
-				Storage.clearAnalyzedTransactionsFlags();
+				StorageScratchpad.instance().clearAnalyzedTransactionsFlags();
 
-                List<long?> nonAnalyzedTransactions = new List<long?> { Storage.transactionPointer(milestone.Sbytes()) };
-
+				LinkedList<long?> nonAnalyzedTransactions = new LinkedList<>(Collections.singleton(StorageTransactions.instance().transactionPointer(milestone.bytes())));
 				long? pointer;
-				while ((pointer = nonAnalyzedTransactions.Poll()) != null)
+				while ((pointer = nonAnalyzedTransactions.RemoveFirst()) != null)
 				{
 
-					if (Storage.setAnalyzedTransactionFlag((long)pointer))
+					if (StorageScratchpad.instance().AnalyzedTransactionFlag = pointer)
 					{
 
-						Transaction transaction = Storage.loadTransaction((long)pointer);
+						Transaction transaction = StorageTransactions.instance().loadTransaction(pointer);
 
 						if (transaction.value != 0)
 						{
 
 							Hash address = new Hash(transaction.address, 0, Transaction.ADDRESS_SIZE);
-
 							long? balance = balances[address];
 							if (balance != null)
 							{
@@ -560,28 +536,21 @@ namespace com.iota.iri.service
 								balances.Add(address, balance + transaction.value);
 							}
 						}
-						nonAnalyzedTransactions.Add(transaction.trunkTransactionPointer);
-						nonAnalyzedTransactions.Add(transaction.branchTransactionPointer);
+						nonAnalyzedTransactions.AddLast(transaction.trunkTransactionPointer);
+						nonAnalyzedTransactions.AddLast(transaction.branchTransactionPointer);
 					}
 				}
 			}
 
-
-			List<string> elements = new List<string>();
-
-			foreach (Hash address in addresses)
-			{
-				elements.Add(balances[address].ToString());
-			}
+			IList<string> elements = addresses.stream().map(address -> balances[address].ToString()).collect(Collectors.toCollection(LinkedList::new));
 
 			return GetBalancesResponse.create(elements, milestone, milestoneIndex);
 		}
 
-
-		private static AbstractResponse attachToTangleStatement(Hash trunkTransaction, Hash branchTransaction, int minWeightMagnitude, IList<string> trytes)
+		[MethodImpl(MethodImplOptions.Synchronized)]
+		private AbstractResponse attachToTangleStatement(Hash trunkTransaction, Hash branchTransaction, int minWeightMagnitude, IList<string> trytes)
 		{
-
-			List<Transaction> transactions = new List<Transaction>();
+			IList<Transaction> transactions = new LinkedList<>();
 
 			Hash prevTransaction = null;
 
@@ -589,58 +558,45 @@ namespace com.iota.iri.service
 			{
 
 				int[] transactionTrits = Converter.trits(tryte);
-				Array.Copy((prevTransaction == null ? trunkTransaction : prevTransaction).Trits(), 0, transactionTrits, Transaction.TRUNK_TRANSACTION_TRINARY_OFFSET, Transaction.TRUNK_TRANSACTION_TRINARY_SIZE);
-				Array.Copy((prevTransaction == null ? branchTransaction : trunkTransaction).Trits(), 0, transactionTrits, Transaction.BRANCH_TRANSACTION_TRINARY_OFFSET, Transaction.BRANCH_TRANSACTION_TRINARY_SIZE);
+				Array.Copy((prevTransaction == null ? trunkTransaction : prevTransaction).trits(), 0, transactionTrits, Transaction.TRUNK_TRANSACTION_TRINARY_OFFSET, Transaction.TRUNK_TRANSACTION_TRINARY_SIZE);
+				Array.Copy((prevTransaction == null ? branchTransaction : trunkTransaction).trits(), 0, transactionTrits, Transaction.BRANCH_TRANSACTION_TRINARY_OFFSET, Transaction.BRANCH_TRANSACTION_TRINARY_SIZE);
 
-				if (pearlDiver.search(transactionTrits, minWeightMagnitude, 0))
+				if (!pearlDiver.search(transactionTrits, minWeightMagnitude, 0))
 				{
 					transactions.Clear();
 					break;
 				}
-
 				Transaction transaction = new Transaction(transactionTrits);
 				transactions.Add(transaction);
 				prevTransaction = new Hash(transaction.hash, 0, Transaction.HASH_SIZE);
 			}
 
-
-			List<string> elements = new List<string>();
-
+			IList<string> elements = new LinkedList<>();
 			for (int i = transactions.Count; i-- > 0;)
 			{
-				elements.Add("\"" + Converter.trytes(transactions[i].Trits()) + "\"");
+				elements.Add(Converter.trytes(transactions[i].trits()));
 			}
 			return AttachToTangleResponse.create(elements);
 		}
 
-
-		private static AbstractResponse addNeighborsStatement(IList<string> uris)
+		private AbstractResponse addNeighborsStatement(IList<string> uris)
 		{
 		    try
 		    {
 		        int numberOfAddedNeighbors = 0;
-
 		        foreach (string uriString in uris)
 		        {
-
-		            Uri uri = new Uri(uriString);
-
-		            if (uri.Scheme != null && uri.Scheme.Equals("udp"))
+		            URI uri = new URI(uriString);
+		            if ("udp".Equals(uri.Scheme))
 		            {
-		                var ipEndPoint = new IPEndPoint(Dns.GetHostEntry(uri.Host).AddressList[0], uri.Port);
-		                SocketAddress socketAddress = ipEndPoint.Serialize();
-
-		                Neighbor neighbor = new Neighbor(socketAddress);
-
-		                if (!Node.neighbors.Contains(neighbor))
+		                Neighbor neighbor = new Neighbor(new InetSocketAddress(uri.Host, uri.Port));
+		                if (!Node.instance().Neighbors.Contains(neighbor))
 		                {
-
-		                    Node.neighbors.Add(neighbor);
+		                    Node.instance().Neighbors.Add(neighbor);
 		                    numberOfAddedNeighbors++;
 		                }
 		            }
 		        }
-
 		        return AddedNeighborsResponse.create(numberOfAddedNeighbors);
 		    }
 		    catch
@@ -649,36 +605,55 @@ namespace com.iota.iri.service
 		    }
 		}
 
-
-		private static void sendResponse(HttpListenerResponse exchange, AbstractResponse res, long beginningTime)
+		private void sendResponse(HttpServerExchange exchange, AbstractResponse res, long beginningTime)
 		{
 		    try
 		    {
-		        res.Duration = (int) (DateTimeExtensions.currentTimeMillis() - beginningTime);
+		        res.Duration = (int) (System.currentTimeMillis() - beginningTime);
+		        string response = gson.toJson(res);
 
-                // string response = gson.toJson(res);
-                string response = JsonConvert.SerializeObject(res);
+		        if (res is ErrorResponse)
+		        {
+		            exchange.StatusCode = 400; // bad request
+		        }
+		        else if (res is AccessLimitedResponse)
+		        {
+		            exchange.StatusCode = 401; // api method not allowed
+		        }
+		        else if (res is ExceptionResponse)
+		        {
+		            exchange.StatusCode = 500; // internal error
+		        }
 
-                //exchange.ResponseChannel.write(ByteBuffer.wrap(response.getBytes(StandardCharsets.UTF_8)));
-		        // exchange.endExchange();
+		        setupResponseHeaders(exchange);
 
-                byte[] utf8ResponseBytes = Encoding.UTF8.GetBytes(response);
-
-                exchange.Headers.Add("Content-Type", "application/json; charset=utf-8");
-                exchange.Headers.Add("Access-Control-Allow-Origin", "*");
-
-                exchange.StatusCode = (int)HttpStatusCode.OK;
-                // Get a response stream and write the response to it.
-                exchange.ContentLength64 = utf8ResponseBytes.Length;
-                // System.IO.Stream output = response.OutputStream;
-
-                using (Stream stream = exchange.OutputStream)
-                {   // also BufferedStream supports byte[]
-                    using (BinaryWriter writer = new BinaryWriter(stream))
-                    {
-                        writer.Write(utf8ResponseBytes);
-                    }
-                }
+		        ByteBuffer responseBuf = ByteBuffer.wrap(response.getBytes(StandardCharsets.UTF_8));
+		        exchange.ResponseContentLength = responseBuf.array().length;
+		        StreamSinkChannel sinkChannel = exchange.ResponseChannel;
+		        sinkChannel.WriteSetter.set(channel->
+		        {
+		            if (responseBuf.remaining() > 0)
+		                try
+		                {
+		                    sinkChannel.write(responseBuf);
+		                    if (responseBuf.remaining() == 0)
+		                    {
+		                        exchange.endExchange();
+		                    }
+		                }
+		                catch (IOException e)
+		                {
+		                    log.error("Error writing response", e);
+		                    exchange.endExchange();
+		                }
+		            else
+		            {
+		                exchange.endExchange();
+		            }
+		        }
+		    )
+		        ;
+		        sinkChannel.resumeWrites();
 		    }
 		    catch
 		    {
@@ -686,13 +661,26 @@ namespace com.iota.iri.service
 		    }
 		}
 
-		public static void shutDown()
+		private static void setupResponseHeaders(HttpServerExchange exchange)
+		{
+			HeaderMap headerMap = exchange.ResponseHeaders;
+			headerMap.add(new HttpString("Access-Control-Allow-Origin"), Configuration.string(Configuration.DefaultConfSettings.CORS_ENABLED));
+			headerMap.add(new HttpString("Keep-Alive"), "timeout=500, max=100");
+		}
+
+		public virtual void shutDown()
 		{
 			if (server != null)
 			{
-                server.Stop();
-                server.Close();
+				server.stop();
 			}
+		}
+
+		private static API instance = new API();
+
+		public static API instance()
+		{
+			return instance;
 		}
 	}
 
