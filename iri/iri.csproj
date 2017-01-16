@@ -93,8 +93,13 @@
     <Compile Include="service\dto\GetTrytesResponse.cs" />
     <Compile Include="service\dto\RemoveNeighborsResponse.cs" />
     <Compile Include="service\Node.cs" />
+    <Compile Include="service\storage\AbstractStorage.cs" />
     <Compile Include="service\storage\Storage.cs" />
+    <Compile Include="service\storage\StorageAddresses.cs" />
+    <Compile Include="service\storage\StorageApprovers.cs" />
     <Compile Include="service\storage\StorageBundle.cs" />
+    <Compile Include="service\storage\StorageScratchpad.cs" />
+    <Compile Include="service\storage\StorageTags.cs" />
     <Compile Include="service\storage\StorageTransactions.cs" />
     <Compile Include="service\TipsManager.cs" />
     <Compile Include="Snapshot.cs" />

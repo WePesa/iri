@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Text;
+using com.iota.iri.service.storage;
 using iri.utils;
 using Newtonsoft.Json;
 using slf4net;

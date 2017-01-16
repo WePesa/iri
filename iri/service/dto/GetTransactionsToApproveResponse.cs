@@ -1,5 +1,7 @@
 using iri.utils;
 
+// 1.1.2.3
+
 namespace com.iota.iri.service.dto
 {
 
@@ -9,21 +11,21 @@ namespace com.iota.iri.service.dto
 	{
 
 		private string trunkTransaction;
-		private string branchTransactionToApprove;
+		private string branchTransaction;
 
 		public static AbstractResponse create(Hash trunkTransactionToApprove, Hash branchTransactionToApprove)
 		{
 			GetTransactionsToApproveResponse res = new GetTransactionsToApproveResponse();
 			res.trunkTransaction = trunkTransactionToApprove.ToString();
-			res.branchTransactionToApprove = branchTransactionToApprove.ToString();
+			res.branchTransaction = branchTransactionToApprove.ToString();
 			return res;
 		}
 
-		public virtual string BranchTransactionToApprove
+		public virtual string BranchTransaction
 		{
 			get
 			{
-				return branchTransactionToApprove;
+				return branchTransaction;
 			}
 		}
 
@@ -39,7 +41,7 @@ namespace com.iota.iri.service.dto
         {
             return new ToStringBuilder<GetTransactionsToApproveResponse>(this)
               .Append(m => m.trunkTransaction)
-              .Append(m => m.branchTransactionToApprove)       
+              .Append(m => m.branchTransaction)       
               .ToString();
         }
 
@@ -47,7 +49,7 @@ namespace com.iota.iri.service.dto
         {
             return new EqualsBuilder<GetTransactionsToApproveResponse>(this, that)
               .With(m => m.trunkTransaction)
-              .With(m => m.branchTransactionToApprove)  
+              .With(m => m.branchTransaction)  
               .Equals();
         }
 
@@ -55,7 +57,7 @@ namespace com.iota.iri.service.dto
         {
             return new HashCodeBuilder<GetTransactionsToApproveResponse>(this)
               .With(m => m.trunkTransaction)
-              .With(m => m.branchTransactionToApprove)  
+              .With(m => m.branchTransaction)  
               .HashCode;
         }
 	}

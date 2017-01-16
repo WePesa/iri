@@ -1,5 +1,7 @@
 using iri.utils;
 
+// 1.1.2.3
+
 namespace com.iota.iri.service.dto
 {
 
@@ -12,6 +14,8 @@ namespace com.iota.iri.service.dto
 		private string appVersion;
 		private int jreAvailableProcessors;
 		private long jreFreeMemory;
+        private string jreVersion;
+
 
 		private long jreMaxMemory;
 		private long jreTotalMemory;
@@ -27,13 +31,17 @@ namespace com.iota.iri.service.dto
 		private int tips;
 		private int transactionsToRequest;
 
-		public static AbstractResponse create(string appName, string appVersion, int jreAvailableProcessors, long jreFreeMemory, long maxMemory, long totalMemory, Hash latestMilestone, int latestMilestoneIndex, Hash latestSolidSubtangleMilestone, int latestSolidSubtangleMilestoneIndex, int neighbors, int packetsQueueSize, long currentTimeMillis, int tips, int numberOfTransactionsToRequest)
+		public static AbstractResponse create(string appName, string appVersion, int jreAvailableProcessors, long jreFreeMemory,
+                                              string jreVersion, long maxMemory, long totalMemory, Hash latestMilestone, int latestMilestoneIndex,
+                                              Hash latestSolidSubtangleMilestone, int latestSolidSubtangleMilestoneIndex, int neighbors, int packetsQueueSize, 
+                                              long currentTimeMillis, int tips, int numberOfTransactionsToRequest)
 		{
 			GetNodeInfoResponse res = new GetNodeInfoResponse();
 			res.appName = appName;
 			res.appVersion = appVersion;
 			res.jreAvailableProcessors = jreAvailableProcessors;
 			res.jreFreeMemory = jreFreeMemory;
+            res.jreVersion = jreVersion;
 
 			res.jreMaxMemory = maxMemory;
 			res.jreTotalMemory = totalMemory;
@@ -98,6 +106,14 @@ namespace com.iota.iri.service.dto
 				return jreTotalMemory;
 			}
 		}
+
+        public virtual string JreVersion
+        {
+            get
+            {
+                return jreVersion;
+            }
+        }
 
 		public virtual string LatestMilestone
 		{
@@ -180,6 +196,7 @@ namespace com.iota.iri.service.dto
               .Append(m => m.jreFreeMemory)
               .Append(m => m.jreMaxMemory)
               .Append(m => m.jreTotalMemory)
+              .Append(m => m.jreVersion)        
               .Append(m => m.latestMilestone)
               .Append(m => m.latestMilestoneIndex)
               .Append(m => m.latestSolidSubtangleMilestone)
@@ -201,6 +218,7 @@ namespace com.iota.iri.service.dto
               .With(m => m.jreFreeMemory)
               .With(m => m.jreMaxMemory)
               .With(m => m.jreTotalMemory)
+              .With(m => m.jreVersion)
               .With(m => m.latestMilestone)
               .With(m => m.latestMilestoneIndex)
               .With(m => m.latestSolidSubtangleMilestone)
@@ -222,6 +240,7 @@ namespace com.iota.iri.service.dto
               .With(m => m.jreFreeMemory)
               .With(m => m.jreMaxMemory)
               .With(m => m.jreTotalMemory)
+              .With(m => m.jreVersion)
               .With(m => m.latestMilestone)
               .With(m => m.latestMilestoneIndex)
               .With(m => m.latestSolidSubtangleMilestone)
