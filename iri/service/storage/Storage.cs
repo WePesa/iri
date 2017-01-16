@@ -8,7 +8,7 @@ using System.Threading;
 using iri.utils;
 using slf4net;
 
-namespace com.iota.iri.service
+namespace com.iota.iri.service.storage
 {
 
 	using Milestone = com.iota.iri.Milestone;

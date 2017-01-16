@@ -1,5 +1,7 @@
 using iri.utils;
 
+// 1.1.2.3
+
 namespace com.iota.iri.service.dto
 {
 
@@ -11,6 +13,9 @@ namespace com.iota.iri.service.dto
     // I removed the abstract in order to createEmptyResponse.
 	public /*abstract*/ class AbstractResponse
 	{
+        private class Emptyness : AbstractResponse
+        {
+        }
 
 		private int? duration;
 
@@ -54,7 +59,7 @@ namespace com.iota.iri.service.dto
 
 		public static AbstractResponse createEmptyResponse()
 		{
-            return new AbstractResponse();
+            return new Emptyness();
 		}
 
 	}

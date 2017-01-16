@@ -2,6 +2,8 @@ using System;
 using System.Net;
 using iri.utils;
 
+// 1.1.2.3
+
 namespace com.iota.iri
 {
 
@@ -13,7 +15,9 @@ namespace com.iota.iri
 
 		private readonly SocketAddress address;
 
-		public int numberOfAllTransactions, numberOfNewTransactions, numberOfInvalidTransactions;
+        private int numberOfAllTransactions;
+        private int numberOfNewTransactions;
+        private int numberOfInvalidTransactions;
 
 
 		public Neighbor(SocketAddress address)
@@ -30,7 +34,11 @@ namespace com.iota.iri
                 IPEndPoint endpoint = new IPEndPoint(0, 0);
                 IPEndPoint clonedIPEndPoint = (IPEndPoint)endpoint.Create(address);
 
-                Node.socket.Send((byte[])(Array)packet.getData(), packet.getLength(), clonedIPEndPoint);
+                // Node.socket.Send((byte[])(Array)packet.getData(), packet.getLength(), clonedIPEndPoint);
+
+                Node.instance().send((byte[])(Array)packet.getData(), packet.getLength(), clonedIPEndPoint);
+
+
 
 				// packet.setSocketAddress(address);
 				// Node.socket.send(packet);
@@ -47,6 +55,15 @@ namespace com.iota.iri
 
 		public override bool Equals(object obj)
 		{
+            if (this == obj)
+            {
+                return true;
+            }
+            if ((obj == null) || (obj.getClass() != this.getClass()))
+            {
+                return false;
+            }
+
 			return address.Equals(((Neighbor)obj).address);
 		}
 
@@ -62,6 +79,21 @@ namespace com.iota.iri
 				return address;
 			}
 		}
+
+        public void incAllTransactions()
+        {
+            numberOfAllTransactions++;
+        }
+
+        public void incNewTransactions()
+        {
+            numberOfNewTransactions++;
+        }
+
+        public void incInvalidTransactions()
+        {
+            numberOfInvalidTransactions++;
+        }
 
 		public virtual int NumberOfAllTransactions
 		{

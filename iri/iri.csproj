@@ -51,6 +51,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Bundle.cs" />
+    <Compile Include="conf\Configuration.cs" />
     <Compile Include="csutils\ArithmeticHelper.cs" />
     <Compile Include="csutils\Arrays.cs" />
     <Compile Include="csutils\ConcurrentOrderedList.cs" />
@@ -77,6 +78,7 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="service\API.cs" />
     <Compile Include="service\dto\AbstractResponse.cs" />
+    <Compile Include="service\dto\AccessLimitedResponse.cs" />
     <Compile Include="service\dto\AddedNeighborsResponse.cs" />
     <Compile Include="service\dto\AttachToTangleResponse.cs" />
     <Compile Include="service\dto\ErrorResponse.cs" />
@@ -91,7 +93,9 @@
     <Compile Include="service\dto\GetTrytesResponse.cs" />
     <Compile Include="service\dto\RemoveNeighborsResponse.cs" />
     <Compile Include="service\Node.cs" />
-    <Compile Include="service\Storage.cs" />
+    <Compile Include="service\storage\Storage.cs" />
+    <Compile Include="service\storage\StorageBundle.cs" />
+    <Compile Include="service\storage\StorageTransactions.cs" />
     <Compile Include="service\TipsManager.cs" />
     <Compile Include="Snapshot.cs" />
     <Compile Include="utils\Converter.cs" />

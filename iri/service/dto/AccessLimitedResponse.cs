@@ -5,14 +5,17 @@ using iri.utils;
 namespace com.iota.iri.service.dto
 {
 
-	public class ErrorResponse : AbstractResponse
+    ///
+    /// <summary> * Created by Adrian on 07.01.2017. </summary>
+    /// 
+	public class AccessLimitedResponse : AbstractResponse
 	{
 
 		private string error;
 
 		public static AbstractResponse create(string error)
 		{
-			ErrorResponse res = new ErrorResponse();
+			AccessLimitedResponse res = new AccessLimitedResponse();
 			res.error = error;
 			return res;
 		}
@@ -25,23 +28,24 @@ namespace com.iota.iri.service.dto
 			}
 		}
 
+
         public override string ToString()
         {
-            return new ToStringBuilder<ErrorResponse>(this)
+            return new ToStringBuilder<AccessLimitedResponse>(this)
               .Append(m => m.error)
               .ToString();
         }
 
         public override bool Equals(object that)
         {
-            return new EqualsBuilder<ErrorResponse>(this, that)
+            return new EqualsBuilder<AccessLimitedResponse>(this, that)
               .With(m => m.error)
               .Equals();
         }
 
         public override int GetHashCode()
         {
-            return new HashCodeBuilder<ErrorResponse>(this)
+            return new HashCodeBuilder<AccessLimitedResponse>(this)
               .With(m => m.error)
               .HashCode;
         }

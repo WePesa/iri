@@ -2,6 +2,8 @@ using System;
 using System.Text;
 using iri.utils;
 
+// 1.1.2.3
+
 namespace com.iota.iri.utils
 {
 
@@ -158,7 +160,7 @@ namespace com.iota.iri.utils
 			return trits[offset] + trits[offset + 1] * 3 + trits[offset + 2] * 9;
 		}
 
-		public static void increment(int[] trits, int size)
+		private static void increment(int[] trits, int size)
 		{
 
 			for (int i = 0; i < size; i++)

@@ -8,33 +8,41 @@ namespace com.iota.iri.service.dto
 	public class AttachToTangleResponse : AbstractResponse
 	{
 
-		private IList<string> elements;
+		private IList<string> trytes;
 
 		public static AbstractResponse create(IList<string> elements)
 		{
 			AttachToTangleResponse res = new AttachToTangleResponse();
-			res.elements = elements;
+			res.trytes = elements;
 			return res;
 		}
+
+        public virtual IList<string> Trytes
+        {
+            get
+            {
+                return trytes;
+            }
+        }
 
         public override string ToString()
         {
             return new ToStringBuilder<AttachToTangleResponse>(this)
-              .Append(m => m.elements)
+              .Append(m => m.trytes)
               .ToString();
         }
 
         public override bool Equals(object that)
         {
             return new EqualsBuilder<AttachToTangleResponse>(this, that)
-              .With(m => m.elements)
+              .With(m => m.trytes)
               .Equals();
         }
 
         public override int GetHashCode()
         {
             return new HashCodeBuilder<AttachToTangleResponse>(this)
-              .With(m => m.elements)
+              .With(m => m.trytes)
               .HashCode;
         }
 	}
