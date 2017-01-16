@@ -22,47 +22,53 @@ namespace com.iota.iri.service.storage
         private readonly ByteBuffer[] bundlesChunks = new ByteBuffer[MAX_NUMBER_OF_CHUNKS];
         private volatile long bundlesNextPointer = SUPER_GROUPS_SIZE;
 
-        //JAVA TO VB & C# CONVERTER WARNING: Method 'throws' clauses are not available in .NET:
-        //ORIGINAL LINE: public void init() throws IOException
         public override void init()
         {
-
-            bundlesChannel = FileChannel.open(Paths.get(BUNDLES_FILE_NAME), StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
-            bundlesChunks[0] = bundlesChannel.map(FileChannel.MapMode.READ_WRITE, 0, SUPER_GROUPS_SIZE);
-            long bundlesChannelSize = bundlesChannel.size();
-            while (true)
+            try
             {
-
-                if ((bundlesNextPointer & (CHUNK_SIZE - 1)) == 0)
-                {
-                    bundlesChunks[(int)(bundlesNextPointer >> 27)] = bundlesChannel.map(FileChannel.MapMode.READ_WRITE, bundlesNextPointer, CHUNK_SIZE);
-                }
-
-                if (bundlesChannelSize - bundlesNextPointer > CHUNK_SIZE)
-                {
-                    bundlesNextPointer += CHUNK_SIZE;
-
-                }
-                else
+                bundlesChannel = FileChannel.open(Paths.get(BUNDLES_FILE_NAME), StandardOpenOption.CREATE,
+                    StandardOpenOption.READ, StandardOpenOption.WRITE);
+                bundlesChunks[0] = bundlesChannel.map(FileChannel.MapMode.READ_WRITE, 0, SUPER_GROUPS_SIZE);
+                long bundlesChannelSize = bundlesChannel.size();
+                while (true)
                 {
 
-                    bundlesChunks[(int)(bundlesNextPointer >> 27)].get(mainBuffer);
-                    bool empty = true;
-                    foreach (int value in mainBuffer)
+                    if ((bundlesNextPointer & (CHUNK_SIZE - 1)) == 0)
+                    {
+                        bundlesChunks[(int) (bundlesNextPointer >> 27)] =
+                            bundlesChannel.map(FileChannel.MapMode.READ_WRITE, bundlesNextPointer, CHUNK_SIZE);
+                    }
+
+                    if (bundlesChannelSize - bundlesNextPointer > CHUNK_SIZE)
+                    {
+                        bundlesNextPointer += CHUNK_SIZE;
+
+                    }
+                    else
                     {
 
-                        if (value != 0)
+                        bundlesChunks[(int) (bundlesNextPointer >> 27)].get(mainBuffer);
+                        bool empty = true;
+                        foreach (int value in mainBuffer)
                         {
-                            empty = false;
+
+                            if (value != 0)
+                            {
+                                empty = false;
+                                break;
+                            }
+                        }
+                        if (empty)
+                        {
                             break;
                         }
+                        bundlesNextPointer += CELL_SIZE;
                     }
-                    if (empty)
-                    {
-                        break;
-                    }
-                    bundlesNextPointer += CELL_SIZE;
                 }
+            }
+            catch
+            {
+                throw new IOException();
             }
 
         }

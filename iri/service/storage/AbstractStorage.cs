@@ -38,15 +38,11 @@ namespace com.iota.iri.service.storage
 		protected internal static readonly sbyte[] mainBuffer = new sbyte[CELL_SIZE];
 		protected internal static readonly sbyte[] auxBuffer = new sbyte[CELL_SIZE];
 
-//JAVA TO VB & C# CONVERTER WARNING: 'final' parameters are not allowed in .NET:
-//ORIGINAL LINE: public static long value(final byte[] buffer, final int offset)
 		public static long value(sbyte[] buffer, int offset)
 		{
 			return ((long)(buffer[offset] & 0xFF)) + (((long)(buffer[offset + 1] & 0xFF)) << 8) + (((long)(buffer[offset + 2] & 0xFF)) << 16) + (((long)(buffer[offset + 3] & 0xFF)) << 24) + (((long)(buffer[offset + 4] & 0xFF)) << 32) + (((long)(buffer[offset + 5] & 0xFF)) << 40) + (((long)(buffer[offset + 6] & 0xFF)) << 48) + (((long)(buffer[offset + 7] & 0xFF)) << 56);
 		}
 
-//JAVA TO VB & C# CONVERTER WARNING: 'final' parameters are not allowed in .NET:
-//ORIGINAL LINE: public static void setValue(final byte[] buffer, final int offset, final long value)
 		public static void setValue(sbyte[] buffer, int offset, long value)
 		{
 
@@ -80,8 +76,6 @@ namespace com.iota.iri.service.storage
 			Array.Copy(ZEROED_BUFFER, 0, mainBuffer, 0, CELL_SIZE);
 		}
 
-//JAVA TO VB & C# CONVERTER WARNING: Method 'throws' clauses are not available in .NET:
-//ORIGINAL LINE: public abstract void init() throws IOException;
 		public abstract void init();
 
 		public abstract void shutdown();

@@ -26,45 +26,52 @@ namespace com.iota.iri.service.storage
 
 		private const string TAGS_FILE_NAME = "tags.iri";
 
-//JAVA TO VB & C# CONVERTER WARNING: Method 'throws' clauses are not available in .NET:
-//ORIGINAL LINE: public void init() throws IOException
 		public override void init()
 		{
-			tagsChannel = FileChannel.open(Paths.get(TAGS_FILE_NAME), StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
-			tagsChunks[0] = tagsChannel.map(FileChannel.MapMode.READ_WRITE, 0, SUPER_GROUPS_SIZE);
-			long tagsChannelSize = tagsChannel.size();
-			while (true)
-			{
+		    try
+		    {
+		        tagsChannel = FileChannel.open(Paths.get(TAGS_FILE_NAME), StandardOpenOption.CREATE, StandardOpenOption.READ,
+		            StandardOpenOption.WRITE);
+		        tagsChunks[0] = tagsChannel.map(FileChannel.MapMode.READ_WRITE, 0, SUPER_GROUPS_SIZE);
+		        long tagsChannelSize = tagsChannel.size();
+		        while (true)
+		        {
 
-				if ((tagsNextPointer & (CHUNK_SIZE - 1)) == 0)
-				{
-					tagsChunks[(int)(tagsNextPointer >> 27)] = tagsChannel.map(FileChannel.MapMode.READ_WRITE, tagsNextPointer, CHUNK_SIZE);
-				}
+		            if ((tagsNextPointer & (CHUNK_SIZE - 1)) == 0)
+		            {
+		                tagsChunks[(int) (tagsNextPointer >> 27)] = tagsChannel.map(FileChannel.MapMode.READ_WRITE,
+		                    tagsNextPointer, CHUNK_SIZE);
+		            }
 
-				if (tagsChannelSize - tagsNextPointer > CHUNK_SIZE)
-				{
-					tagsNextPointer += CHUNK_SIZE;
-				}
-				else
-				{
-					tagsChunks[(int)(tagsNextPointer >> 27)].get(mainBuffer);
-					bool empty = true;
-					foreach (int value in mainBuffer)
-					{
-						if (value != 0)
-						{
-							empty = false;
-							break;
-						}
-					}
-					if (empty)
-					{
-						break;
-					}
+		            if (tagsChannelSize - tagsNextPointer > CHUNK_SIZE)
+		            {
+		                tagsNextPointer += CHUNK_SIZE;
+		            }
+		            else
+		            {
+		                tagsChunks[(int) (tagsNextPointer >> 27)].get(mainBuffer);
+		                bool empty = true;
+		                foreach (int value in mainBuffer)
+		                {
+		                    if (value != 0)
+		                    {
+		                        empty = false;
+		                        break;
+		                    }
+		                }
+		                if (empty)
+		                {
+		                    break;
+		                }
 
-					tagsNextPointer += CELL_SIZE;
-				}
-			}
+		                tagsNextPointer += CELL_SIZE;
+		            }
+		        }
+		    }
+		    catch
+		    {
+		        throw new IOException();
+		    }
 		}
 
 		public override void shutdown()

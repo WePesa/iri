@@ -29,45 +29,54 @@ namespace com.iota.iri.service.storage
 
         public static long transactionsNextPointer = CELLS_OFFSET - SUPER_GROUPS_OFFSET;
 
-        //JAVA TO VB & C# CONVERTER WARNING: Method 'throws' clauses are not available in .NET:
-        //ORIGINAL LINE: public void init() throws IOException
         public override void init()
         {
-
-            transactionsChannel = FileChannel.open(Paths.get(TRANSACTIONS_FILE_NAME), StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
-            transactionsTipsFlags = transactionsChannel.map(FileChannel.MapMode.READ_WRITE, TIPS_FLAGS_OFFSET, TIPS_FLAGS_SIZE);
-            transactionsChunks[0] = transactionsChannel.map(FileChannel.MapMode.READ_WRITE, SUPER_GROUPS_OFFSET, SUPER_GROUPS_SIZE);
-            long transactionsChannelSize = transactionsChannel.size();
-            while (true)
+            try
             {
-
-                if ((transactionsNextPointer & (CHUNK_SIZE - 1)) == 0)
-                {
-                    transactionsChunks[(int)(transactionsNextPointer >> 27)] = transactionsChannel.map(FileChannel.MapMode.READ_WRITE, SUPER_GROUPS_OFFSET + transactionsNextPointer, CHUNK_SIZE);
-                }
-                if (transactionsChannelSize - transactionsNextPointer - SUPER_GROUPS_OFFSET > CHUNK_SIZE)
-                {
-                    transactionsNextPointer += CHUNK_SIZE;
-                }
-                else
+                transactionsChannel = FileChannel.open(Paths.get(TRANSACTIONS_FILE_NAME), StandardOpenOption.CREATE,
+                    StandardOpenOption.READ, StandardOpenOption.WRITE);
+                transactionsTipsFlags = transactionsChannel.map(FileChannel.MapMode.READ_WRITE, TIPS_FLAGS_OFFSET,
+                    TIPS_FLAGS_SIZE);
+                transactionsChunks[0] = transactionsChannel.map(FileChannel.MapMode.READ_WRITE, SUPER_GROUPS_OFFSET,
+                    SUPER_GROUPS_SIZE);
+                long transactionsChannelSize = transactionsChannel.size();
+                while (true)
                 {
 
-                    transactionsChunks[(int)(transactionsNextPointer >> 27)].get(mainBuffer);
-                    bool empty = true;
-                    foreach (int value in mainBuffer)
+                    if ((transactionsNextPointer & (CHUNK_SIZE - 1)) == 0)
                     {
-                        if (value != 0)
+                        transactionsChunks[(int) (transactionsNextPointer >> 27)] =
+                            transactionsChannel.map(FileChannel.MapMode.READ_WRITE,
+                                SUPER_GROUPS_OFFSET + transactionsNextPointer, CHUNK_SIZE);
+                    }
+                    if (transactionsChannelSize - transactionsNextPointer - SUPER_GROUPS_OFFSET > CHUNK_SIZE)
+                    {
+                        transactionsNextPointer += CHUNK_SIZE;
+                    }
+                    else
+                    {
+
+                        transactionsChunks[(int) (transactionsNextPointer >> 27)].get(mainBuffer);
+                        bool empty = true;
+                        foreach (int value in mainBuffer)
                         {
-                            empty = false;
+                            if (value != 0)
+                            {
+                                empty = false;
+                                break;
+                            }
+                        }
+                        if (empty)
+                        {
                             break;
                         }
+                        transactionsNextPointer += CELL_SIZE;
                     }
-                    if (empty)
-                    {
-                        break;
-                    }
-                    transactionsNextPointer += CELL_SIZE;
                 }
+            }
+            catch
+            {
+                throw new IOException();
             }
         }
 

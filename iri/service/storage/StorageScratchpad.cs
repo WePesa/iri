@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 // 1.1.2.3
+using System.IO;
 using slf4net;
 
 namespace com.iota.iri.service.storage
@@ -33,14 +34,24 @@ namespace com.iota.iri.service.storage
 
 		private FileChannel scratchpadChannel = null;
 
-//JAVA TO VB & C# CONVERTER WARNING: Method 'throws' clauses are not available in .NET:
-//ORIGINAL LINE: public void init() throws IOException
+
 		public override void init()
 		{
-			scratchpadChannel = FileChannel.open(Paths.get(SCRATCHPAD_FILE_NAME), StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
-			transactionsToRequest = scratchpadChannel.map(FileChannel.MapMode.READ_WRITE, TRANSACTIONS_TO_REQUEST_OFFSET, TRANSACTIONS_TO_REQUEST_SIZE);
-			analyzedTransactionsFlags = scratchpadChannel.map(FileChannel.MapMode.READ_WRITE, ANALYZED_TRANSACTIONS_FLAGS_OFFSET, ANALYZED_TRANSACTIONS_FLAGS_SIZE);
-			analyzedTransactionsFlagsCopy = scratchpadChannel.map(FileChannel.MapMode.READ_WRITE, ANALYZED_TRANSACTIONS_FLAGS_COPY_OFFSET, ANALYZED_TRANSACTIONS_FLAGS_COPY_SIZE);
+		    try
+		    {
+		        scratchpadChannel = FileChannel.open(Paths.get(SCRATCHPAD_FILE_NAME), StandardOpenOption.CREATE,
+		            StandardOpenOption.READ, StandardOpenOption.WRITE);
+		        transactionsToRequest = scratchpadChannel.map(FileChannel.MapMode.READ_WRITE, TRANSACTIONS_TO_REQUEST_OFFSET,
+		            TRANSACTIONS_TO_REQUEST_SIZE);
+		        analyzedTransactionsFlags = scratchpadChannel.map(FileChannel.MapMode.READ_WRITE,
+		            ANALYZED_TRANSACTIONS_FLAGS_OFFSET, ANALYZED_TRANSACTIONS_FLAGS_SIZE);
+		        analyzedTransactionsFlagsCopy = scratchpadChannel.map(FileChannel.MapMode.READ_WRITE,
+		            ANALYZED_TRANSACTIONS_FLAGS_COPY_OFFSET, ANALYZED_TRANSACTIONS_FLAGS_COPY_SIZE);
+		    }
+		    catch
+		    {
+		        throw new IOException();
+		    }
 		}
 
 		public override void shutdown()

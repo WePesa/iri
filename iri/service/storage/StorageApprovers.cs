@@ -22,45 +22,53 @@ namespace com.iota.iri.service.storage
 		private readonly ByteBuffer[] approversChunks = new ByteBuffer[MAX_NUMBER_OF_CHUNKS];
 		private volatile long approversNextPointer = SUPER_GROUPS_SIZE;
 
-//JAVA TO VB & C# CONVERTER WARNING: Method 'throws' clauses are not available in .NET:
-//ORIGINAL LINE: public void init() throws IOException
 		public override void init()
 		{
-			approversChannel = FileChannel.open(Paths.get(APPROVERS_FILE_NAME), StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
+		    try
+		    {
 
-			approversChunks[0] = approversChannel.map(FileChannel.MapMode.READ_WRITE, 0, SUPER_GROUPS_SIZE);
-			long approversChannelSize = approversChannel.size();
-			while (true)
-			{
+		        approversChannel = FileChannel.open(Paths.get(APPROVERS_FILE_NAME), StandardOpenOption.CREATE,
+		            StandardOpenOption.READ, StandardOpenOption.WRITE);
 
-				if ((approversNextPointer & (CHUNK_SIZE - 1)) == 0)
-				{
-					approversChunks[(int)(approversNextPointer >> 27)] = approversChannel.map(FileChannel.MapMode.READ_WRITE, approversNextPointer, CHUNK_SIZE);
-				}
-				if (approversChannelSize - approversNextPointer > CHUNK_SIZE)
-				{
-					approversNextPointer += CHUNK_SIZE;
-				}
-				else
-				{
-					approversChunks[(int)(approversNextPointer >> 27)].get(mainBuffer);
-					bool empty = true;
-					foreach (int value in mainBuffer)
-					{
+		        approversChunks[0] = approversChannel.map(FileChannel.MapMode.READ_WRITE, 0, SUPER_GROUPS_SIZE);
+		        long approversChannelSize = approversChannel.size();
+		        while (true)
+		        {
 
-						if (value != 0)
-						{
-							empty = false;
-							break;
-						}
-					}
-					if (empty)
-					{
-						break;
-					}
-					approversNextPointer += CELL_SIZE;
-				}
-			}
+		            if ((approversNextPointer & (CHUNK_SIZE - 1)) == 0)
+		            {
+		                approversChunks[(int) (approversNextPointer >> 27)] =
+		                    approversChannel.map(FileChannel.MapMode.READ_WRITE, approversNextPointer, CHUNK_SIZE);
+		            }
+		            if (approversChannelSize - approversNextPointer > CHUNK_SIZE)
+		            {
+		                approversNextPointer += CHUNK_SIZE;
+		            }
+		            else
+		            {
+		                approversChunks[(int) (approversNextPointer >> 27)].get(mainBuffer);
+		                bool empty = true;
+		                foreach (int value in mainBuffer)
+		                {
+
+		                    if (value != 0)
+		                    {
+		                        empty = false;
+		                        break;
+		                    }
+		                }
+		                if (empty)
+		                {
+		                    break;
+		                }
+		                approversNextPointer += CELL_SIZE;
+		            }
+		        }
+		    }
+		    catch
+		    {
+		        throw new IOException();
+		    }
 		}
 
 		public override void shutdown()
