@@ -78,7 +78,7 @@ namespace com.iota.iri.service
 		        string 
 		        (Configuration.DefaultConfSettings.API_HOST);
 
-		        log.debug("Binding JSON-REST API Undertown server on {}:{}", apiHost, apiPort);
+		        log.Debug("Binding JSON-REST API Undertown server on {}:{}", apiHost, apiPort);
 
 		        server =
 		            Undertow.builder()
@@ -152,7 +152,7 @@ namespace com.iota.iri.service
 					case "addNeighbors":
 					{
 						IList<string> uris = (IList<string>) request["uris"];
-						log.debug("Invoking 'addNeighbors' with {}", uris);
+						log.Debug("Invoking 'addNeighbors' with {}", uris);
 						return addNeighborsStatement(uris);
 					}
 					case "attachToTangle":
@@ -167,7 +167,7 @@ namespace com.iota.iri.service
 					case "broadcastTransactions":
 					{
 						IList<string> trytes = (IList<string>) request["trytes"];
-						log.debug("Invoking 'broadcastTransactions' with {}", trytes);
+						log.Debug("Invoking 'broadcastTransactions' with {}", trytes);
 						return broadcastTransactionStatement(trytes);
 					}
 					case "findTransactions":
@@ -220,7 +220,7 @@ namespace com.iota.iri.service
 					case "getTrytes":
 					{
 						IList<string> hashes = (IList<string>) request["hashes"];
-						log.debug("Executing getTrytesStatement: {}", hashes);
+						log.Debug("Executing getTrytesStatement: {}", hashes);
 						return getTrytesStatement(hashes);
 					}
 
@@ -232,14 +232,14 @@ namespace com.iota.iri.service
 					case "removeNeighbors":
 					{
 						IList<string> uris = (IList<string>) request["uris"];
-						log.debug("Invoking 'removeNeighbors' with {}", uris);
+						log.Debug("Invoking 'removeNeighbors' with {}", uris);
 						return removeNeighborsStatement(uris);
 					}
 
 					case "storeTransactions":
 					{
 						IList<string> trytes = (IList<string>) request["trytes"];
-						log.debug("Invoking 'storeTransactions' with {}", trytes);
+						log.Debug("Invoking 'storeTransactions' with {}", trytes);
 						return storeTransactionStatement(trytes);
 					}
 					default:
@@ -249,7 +249,7 @@ namespace com.iota.iri.service
 			}
 			catch (Exception e)
 			{
-				log.error("API Exception: ", e);
+				log.Error("API Exception: ", e);
 				return ExceptionResponse.create(e.LocalizedMessage);
 			}
 		}
@@ -424,13 +424,13 @@ namespace com.iota.iri.service
 			if (request.ContainsKey("addresses"))
 			{
 				IList<string> addresses = (IList<string>) request["addresses"];
-				log.debug("Searching: {}", addresses.stream().reduce((a, b) -> a += ',' + b));
+				log.Debug("Searching: {}", addresses.stream().reduce((a, b) -> a += ',' + b));
 
 				foreach (string address in addresses)
 				{
 					if (address.Length != 81)
 					{
-						log.error("Address {} doesn't look a valid address", address);
+						log.Error("Address {} doesn't look a valid address", address);
 					}
 					addressesTransactions.addAll(StorageAddresses.instance().addressTransactions(StorageAddresses.instance().addressPointer((new Hash(address)).bytes())));
 				}
@@ -643,7 +643,7 @@ namespace com.iota.iri.service
 		                }
 		                catch (IOException e)
 		                {
-		                    log.error("Error writing response", e);
+		                    log.Error("Error writing response", e);
 		                    exchange.endExchange();
 		                }
 		            else
@@ -676,11 +676,11 @@ namespace com.iota.iri.service
 			}
 		}
 
-		private static API instance = new API();
+		private static API _instance = new API();
 
 		public static API instance()
 		{
-			return instance;
+			return _instance;
 		}
 	}
 

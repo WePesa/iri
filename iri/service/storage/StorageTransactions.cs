@@ -17,9 +17,9 @@ namespace com.iota.iri.service.storage
     public class StorageTransactions : AbstractStorage
     {
 
-        private static readonly ILogger log = LoggerFactory.getLogger(typeof(StorageTransactions));
+        private static readonly ILogger log = LoggerFactory.GetLogger(typeof(StorageTransactions));
 
-        private static readonly StorageTransactions instance = new StorageTransactions();
+        private static readonly StorageTransactions _instance = new StorageTransactions();
         private const string TRANSACTIONS_FILE_NAME = "transactions.iri";
 
         private FileChannel transactionsChannel;
@@ -103,7 +103,7 @@ namespace com.iota.iri.service.storage
             ((MappedByteBuffer)transactionsTipsFlags).force();
             for (int i = 0; i < MAX_NUMBER_OF_CHUNKS && transactionsChunks[i] != null; i++)
             {
-                log.info("Flushing transactions chunk #" + i);
+                log.Info("Flushing transactions chunk #" + i);
                 flush(transactionsChunks[i]);
             }
             try
@@ -112,7 +112,7 @@ namespace com.iota.iri.service.storage
             }
             catch (IOException e)
             {
-                log.error("Shutting down Storage Transaction error: ", e);
+                log.Error("Shutting down Storage Transaction error: ", e);
             }
         }
 
@@ -136,7 +136,7 @@ namespace com.iota.iri.service.storage
                 }
                 catch (IOException e)
                 {
-                    log.error("Caught exception on appendToTransactions:", e);
+                    log.Error("Caught exception on appendToTransactions:", e);
                 }
             }
         }
@@ -336,7 +336,7 @@ namespace com.iota.iri.service.storage
 
         public static StorageTransactions instance()
         {
-            return instance;
+            return _instance;
         }
 
         public virtual Transaction loadMilestone(Hash latestMilestone)

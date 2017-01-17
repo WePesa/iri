@@ -15,7 +15,7 @@ namespace com.iota.iri.service.storage
 
 		private static readonly ILogger log = LoggerFactory.GetLogger(typeof(StorageApprovers));
 
-		private static readonly StorageApprovers instance = new StorageApprovers();
+        private static readonly StorageApprovers _instance = new StorageApprovers();
 
 		private const string APPROVERS_FILE_NAME = "approvers.iri";
 		private FileChannel approversChannel;
@@ -307,7 +307,7 @@ namespace com.iota.iri.service.storage
 
 		public static StorageApprovers instance()
 		{
-			return instance;
+            return _instance;
 		}
 	}
 

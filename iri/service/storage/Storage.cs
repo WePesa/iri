@@ -97,7 +97,7 @@ namespace com.iota.iri.service.storage
 
         // methods helper
 
-        private static Storage instance = new Storage();
+        private static Storage _instance = new Storage();
 
         private Storage()
         {
@@ -105,7 +105,7 @@ namespace com.iota.iri.service.storage
 
         public static Storage instance()
         {
-            return instance;
+            return _instance;
         }
     }
 

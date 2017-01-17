@@ -15,7 +15,7 @@ namespace com.iota.iri.service.storage
 
         private static readonly ILogger log = LoggerFactory.GetLogger(typeof(StorageBundle));
 
-        private static readonly StorageBundle instance = new StorageBundle();
+        private static readonly StorageBundle _instance = new StorageBundle();
         private const string BUNDLES_FILE_NAME = "bundles.iri";
 
         private FileChannel bundlesChannel;
@@ -311,14 +311,14 @@ namespace com.iota.iri.service.storage
                 }
                 catch (IOException e)
                 {
-                    log.error("Caught exception on appendToBundles:", e);
+                    log.Error("Caught exception on appendToBundles:", e);
                 }
             }
         }
 
         public static StorageBundle instance()
         {
-            return instance;
+            return _instance;
         }
 
         private StorageBundle()

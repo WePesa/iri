@@ -7,18 +7,14 @@ using slf4net;
 namespace com.iota.iri.service.storage
 {
 
-
-	using Logger = org.slf4j.Logger;
-	using LoggerFactory = org.slf4j.LoggerFactory;
-
 	using Transaction = com.iota.iri.model.Transaction;
 
 	public class StorageTags : AbstractStorage
 	{
 
-		private static readonly ILogger log = LoggerFactory.getLogger(typeof(StorageTags));
+		private static readonly ILogger log = LoggerFactory.GetLogger(typeof(StorageTags));
 
-		private static readonly StorageTags instance = new StorageTags();
+        private static readonly StorageTags _instance = new StorageTags();
 
 		private FileChannel tagsChannel;
 		private readonly ByteBuffer[] tagsChunks = new ByteBuffer[MAX_NUMBER_OF_CHUNKS];
@@ -78,7 +74,7 @@ namespace com.iota.iri.service.storage
 		{
 			for (int i = 0; i < MAX_NUMBER_OF_CHUNKS && tagsChunks[i] != null; i++)
 			{
-				log.info("Flushing tags chunk #" + i);
+				log.Info("Flushing tags chunk #" + i);
 				flush(tagsChunks[i]);
 			}
 			try
@@ -87,7 +83,7 @@ namespace com.iota.iri.service.storage
 			}
 			catch (Exception e)
 			{
-				log.error("Shutting down Storage Tag error: ", e);
+				log.Error("Shutting down Storage Tag error: ", e);
 			}
 		}
 
@@ -190,7 +186,7 @@ namespace com.iota.iri.service.storage
 				}
 				catch (IOException e)
 				{
-					log.error("Caught exception on appendToTags:", e);
+					log.Error("Caught exception on appendToTags:", e);
 				}
 			}
 		}
@@ -323,7 +319,7 @@ namespace com.iota.iri.service.storage
 
 		public static StorageTags instance()
 		{
-			return instance;
+            return _instance;
 		}
 	}
 

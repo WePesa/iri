@@ -16,7 +16,7 @@ namespace com.iota.iri.service.storage
 
 		private static readonly ILogger log = LoggerFactory.GetLogger(typeof(StorageAddresses));
 
-		private static readonly StorageAddresses instance = new StorageAddresses();
+        private static readonly StorageAddresses _instance = new StorageAddresses();
 		private const string ADDRESSES_FILE_NAME = "addresses.iri";
 
 		private FileChannel addressesChannel;
@@ -79,7 +79,7 @@ namespace com.iota.iri.service.storage
 		{
 			for (int i = 0; i < MAX_NUMBER_OF_CHUNKS && addressesChunks[i] != null; i++)
 			{
-				log.info("Flushing addresses chunk #" + i);
+				log.Info("Flushing addresses chunk #" + i);
 				flush(addressesChunks[i]);
 			}
 			try
@@ -88,7 +88,7 @@ namespace com.iota.iri.service.storage
 			}
 			catch (IOException e)
 			{
-				log.error("Shutting down Storage Addresses error: ", e);
+				log.Error("Shutting down Storage Addresses error: ", e);
 			}
 		}
 
@@ -311,7 +311,7 @@ namespace com.iota.iri.service.storage
 				}
 				catch (IOException e)
 				{
-					log.error("Caught exception on appendToAddresses:", e);
+					log.Error("Caught exception on appendToAddresses:", e);
 				}
 			}
 		}
@@ -319,7 +319,7 @@ namespace com.iota.iri.service.storage
 
 		public static StorageAddresses instance()
 		{
-			return instance;
+            return _instance;
 		}
 
 		public virtual IList<long?> addressesOf(Hash hash)

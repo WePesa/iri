@@ -179,7 +179,7 @@ namespace com.iota.iri.service
 					}
 				}
 
-				log.info(tailsToAnalyze.size() + " tails need to be analyzed");
+				log.Info(tailsToAnalyze.size() + " tails need to be analyzed");
 				Hash bestTip = preferableMilestone;
 				int bestRating = 0;
 				foreach (Hash tail in tailsToAnalyze)
@@ -292,7 +292,7 @@ namespace com.iota.iri.service
 			}
 		}
 
-        private static TipsManager instance = new TipsManager();
+        private static TipsManager _instance = new TipsManager();
 
         private TipsManager()
         {
@@ -300,7 +300,7 @@ namespace com.iota.iri.service
 
         public static TipsManager instance()
         {
-            return instance;
+            return _instance;
         }
     }
 

@@ -32,7 +32,7 @@ namespace com.iota.iri.service
 
 		private static readonly ILogger log = LoggerFactory.GetLogger(typeof(Node));
 
-		private static readonly Node instance = new Node();
+		private static readonly Node _instance = new Node();
 
 		private const int TRANSACTION_PACKET_SIZE = 1650;
 		private const int QUEUE_SIZE = 1000;
@@ -68,7 +68,7 @@ namespace com.iota.iri.service
 		        {
 		            if (!"udp".Equals(u.Scheme))
 		            {
-		                log.warn("WARNING: '{}' is not a valid udp:// uri schema.", u);
+		                log.Warn("WARNING: '{}' is not a valid udp:// uri schema.", u);
 		            }
 		        }
 		    ).
@@ -394,7 +394,7 @@ namespace com.iota.iri.service
 
 		public static Node instance()
 		{
-			return instance;
+			return _instance;
 		}
 
 		public virtual int queuedTransactionsSize()

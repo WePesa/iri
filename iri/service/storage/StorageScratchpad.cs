@@ -20,7 +20,7 @@ namespace com.iota.iri.service.storage
 
 		private static readonly ILogger log = LoggerFactory.getLogger(typeof(StorageScratchpad));
 
-		private static readonly StorageScratchpad instance = new StorageScratchpad();
+        private static readonly StorageScratchpad _instance = new StorageScratchpad();
 		private const string SCRATCHPAD_FILE_NAME = "scratchpad.iri";
 
 		private ByteBuffer transactionsToRequest;
@@ -62,7 +62,7 @@ namespace com.iota.iri.service.storage
 			}
 			catch (Exception e)
 			{
-				log.error("Shutting down Storage Scratchpad error: ", e);
+				log.Error("Shutting down Storage Scratchpad error: ", e);
 			}
 		}
 
@@ -107,7 +107,7 @@ namespace com.iota.iri.service.storage
 					}
 
 					long transactionsNextPointer = StorageTransactions.transactionsNextPointer;
-					log.info("Transactions to request = {}", numberOfTransactionsToRequest + " / " + (transactionsNextPointer - (CELLS_OFFSET - SUPER_GROUPS_OFFSET)) / CELL_SIZE + " (" + (System.currentTimeMillis() - beginningTime) + " ms / " + (numberOfTransactionsToRequest == 0 ? 0 : (previousNumberOfTransactions == 0 ? 0 : (((transactionsNextPointer - (CELLS_OFFSET - SUPER_GROUPS_OFFSET)) / CELL_SIZE - previousNumberOfTransactions) * 100) / numberOfTransactionsToRequest)) + "%)");
+					log.Info("Transactions to request = {}", numberOfTransactionsToRequest + " / " + (transactionsNextPointer - (CELLS_OFFSET - SUPER_GROUPS_OFFSET)) / CELL_SIZE + " (" + (System.currentTimeMillis() - beginningTime) + " ms / " + (numberOfTransactionsToRequest == 0 ? 0 : (previousNumberOfTransactions == 0 ? 0 : (((transactionsNextPointer - (CELLS_OFFSET - SUPER_GROUPS_OFFSET)) / CELL_SIZE - previousNumberOfTransactions) * 100) / numberOfTransactionsToRequest)) + "%)");
 					previousNumberOfTransactions = (int)((transactionsNextPointer - (CELLS_OFFSET - SUPER_GROUPS_OFFSET)) / CELL_SIZE);
 				}
 
@@ -195,7 +195,7 @@ namespace com.iota.iri.service.storage
 
 		public static StorageScratchpad instance()
 		{
-			return instance;
+            return _instance;
 		}
 
 	}
