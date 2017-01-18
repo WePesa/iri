@@ -57,13 +57,13 @@ namespace com.iota.iri.conf
 
 		public static void put(string k, string v)
 		{
-			log.Debug("Setting {} with {}", k, v);
+			log.Debug("Setting {0} with {1}", k, v);
 			conf.Add(k, v);
 		}
 
 		public static void put(DefaultConfSettings d, string v)
 		{
-			log.Debug("Setting {} with {}", d.name(), v);
+			log.Debug("Setting {0} with {1}", d.name(), v);
 			conf.Add(d.name(), v);
 		}
 
