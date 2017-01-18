@@ -59,13 +59,13 @@ namespace com.iota.iri.model
 		public readonly int type;
 		public readonly sbyte[] hash;
 
-        public readonly byte[] bytes; // stores entire tx bytes. message occupies always first part named 'signatureMessageFragment'
+        public readonly sbyte[] bytes; // stores entire tx bytes. message occupies always first part named 'signatureMessageFragment'
 
 
 		public readonly sbyte[] address;
 
         public readonly long value; // <0 spending transaction, >=0 deposit transaction / message    
-        public readonly byte[] tag; // milestone index only for milestone tx. Otherwise, arbitrary up to the tx issuer.
+        public readonly sbyte[] tag; // milestone index only for milestone tx. Otherwise, arbitrary up to the tx issuer.
         public readonly long currentIndex; // index of tx in the bundle
         public readonly long lastIndex; // lastIndex is curIndex of the last tx from the same bundle
 
