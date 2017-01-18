@@ -2,7 +2,7 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Collections.Generic;
 using System.Threading;
-
+using iri.utils;
 using slf4net;
 
 // 1.1.2.3
@@ -53,18 +53,18 @@ namespace com.iota.iri.service
 				{
 					int numberOfAnalyzedTransactions = 0;
 
-//ORIGINAL LINE: final Queue<Long> nonAnalyzedTransactions = new LinkedList<>(Collections.singleton(StorageTransactions.instance().transactionPointer((extraTip == null ? preferableMilestone : extraTip).bytes())));
-					LinkedList<long?> nonAnalyzedTransactions = new LinkedList<>(Collections.singleton(StorageTransactions.instance().transactionPointer((extraTip == null ? preferableMilestone : extraTip).bytes())));
-					long? pointer;
-					while ((pointer = nonAnalyzedTransactions.RemoveFirst()) != null)
+                    List<long?> nonAnalyzedTransactionsScope1 = new List<long?> { StorageTransactions.instance().transactionPointer((extraTip == null ? preferableMilestone : extraTip).Sbytes()) };
+
+					long? longPointer1;
+					while ((longPointer1 = nonAnalyzedTransactionsScope1.Poll()) != null)
 					{
 
-						if (StorageScratchpad.instance().AnalyzedTransactionFlag = pointer)
+						if (StorageScratchpad.instance().setAnalyzedTransactionFlag(longPointer1))
 						{
 
 							numberOfAnalyzedTransactions++;
 
-							Transaction transaction = StorageTransactions.instance().loadTransaction(pointer);
+							Transaction transaction = StorageTransactions.instance().loadTransaction((long)longPointer1);
 							if (transaction.type == Storage.PREFILLED_SLOT)
 							{
 								return null;
@@ -81,12 +81,18 @@ namespace com.iota.iri.service
 									foreach (IList<Transaction> bundleTransactions in bundle.Transactions)
 									{
 
-										if (bundleTransactions.get(0).pointer == transaction.pointer)
+										if (bundleTransactions[0].pointer == transaction.pointer)
 										{
-
 											validBundle = true;
 
-											bundleTransactions.stream().filter(bundleTransaction -> bundleTransaction.value != 0).forEach(bundleTransaction -> { final Hash address = new Hash(bundleTransaction.address); final long? value = state[address]; state.Add(address, value == null ? bundleTransaction.value : (value + bundleTransaction.value)); });
+											bundleTransactions.stream().filter(bundleTransaction => bundleTransaction.value != 0).forEach(
+											    bundleTransaction =>
+											    {
+											        Hash address = new Hash(bundleTransaction.address); 
+                                                    long? value = state[address]; 
+                                                    state.Add(address, value == null ? bundleTransaction.value : (value + bundleTransaction.value));
+											    });
+
 											break;
 										}
 									}
@@ -97,8 +103,8 @@ namespace com.iota.iri.service
 									}
 								}
 
-								nonAnalyzedTransactions.AddLast(transaction.trunkTransactionPointer);
-								nonAnalyzedTransactions.AddLast(transaction.branchTransactionPointer);
+								nonAnalyzedTransactionsScope1.Add(transaction.trunkTransactionPointer);
+								nonAnalyzedTransactionsScope1.Add(transaction.branchTransactionPointer);
 							}
 						}
 					}
@@ -132,7 +138,7 @@ namespace com.iota.iri.service
 				if (extraTip != null)
 				{
 
-					Transaction transaction = StorageTransactions.instance().loadTransaction(StorageTransactions.instance().transactionPointer(tip.bytes()));
+					Transaction transaction = StorageTransactions.instance().loadTransaction(StorageTransactions.instance().transactionPointer(tip.Sbytes()));
 					while (depth-- > 0 && !tip.Equals(Hash.NULL_HASH))
 					{
 
@@ -143,43 +149,47 @@ namespace com.iota.iri.service
 						} while (transaction.currentIndex != 0);
 					}
 				}
-				LinkedList<long?> nonAnalyzedTransactions = new LinkedList<>(Collections.singleton(StorageTransactions.instance().transactionPointer(tip.bytes())));
-				long? pointer;
-				while ((pointer = nonAnalyzedTransactions.RemoveFirst()) != null)
+
+                List<long?> nonAnalyzedTransactionsScope2 = new List<long?> { StorageTransactions.instance().transactionPointer(tip.Sbytes()) };
+				long? longPointer2;
+				while ((longPointer2 = nonAnalyzedTransactionsScope2.Poll()) != null)
 				{
 
-					if (StorageScratchpad.instance().AnalyzedTransactionFlag = pointer)
+					if (StorageScratchpad.instance().setAnalyzedTransactionFlag(longPointer2))
 					{
 
-						Transaction transaction = StorageTransactions.instance().loadTransaction(pointer);
+						Transaction transaction = StorageTransactions.instance().loadTransaction((long)longPointer2);
 
 						if (transaction.currentIndex == 0)
 						{
-							tailsToAnalyze.add(new Hash(transaction.hash, 0, Transaction.HASH_SIZE));
+							tailsToAnalyze.Add(new Hash(transaction.hash, 0, Transaction.HASH_SIZE));
 						}
 
-						StorageApprovers.instance().approveeTransactions(StorageApprovers.instance().approveePointer(transaction.hash)).forEach(nonAnalyzedTransactions::offer);
+                        foreach (long? approverPointer in StorageApprovers.instance().approveeTransactions(StorageApprovers.instance().approveePointer(transaction.hash)))
+						{
+                            nonAnalyzedTransactionsScope2.Add(approverPointer);
+						}
+
 					}
 				}
 
-				if (extraTip != null)
+                if (extraTip != null)
 				{
-
 					StorageScratchpad.instance().loadAnalyzedTransactionsFlags();
 
-					IEnumerator<Hash> tailsToAnalyzeIterator = tailsToAnalyze.GetEnumerator();
-					while (tailsToAnalyzeIterator.MoveNext())
+                    foreach (var currentItem in tailsToAnalyze)
 					{
 
-						Transaction tail = StorageTransactions.instance().loadTransaction(tailsToAnalyzeIterator.Current.bytes());
+                        Transaction tail = StorageTransactions.instance().loadTransaction(currentItem.Sbytes());
 						if (StorageScratchpad.instance().analyzedTransactionFlag(tail.pointer))
 						{
-							tailsToAnalyzeIterator.remove();
+
+                            tailsToAnalyze.Remove(currentItem);
 						}
 					}
 				}
 
-				log.Info(tailsToAnalyze.size() + " tails need to be analyzed");
+				log.Info(tailsToAnalyze.Count + " tails need to be analyzed");
 				Hash bestTip = preferableMilestone;
 				int bestRating = 0;
 				foreach (Hash tail in tailsToAnalyze)
@@ -187,17 +197,17 @@ namespace com.iota.iri.service
 
 					StorageScratchpad.instance().loadAnalyzedTransactionsFlags();
 
-					Set<Hash> extraTransactions = new HashSet<>();
+					HashSet<Hash> extraTransactions = new HashSet<Hash>();
 
-					nonAnalyzedTransactions.Clear();
-					nonAnalyzedTransactions.AddLast(StorageTransactions.instance().transactionPointer(tail.bytes()));
-					while ((pointer = nonAnalyzedTransactions.RemoveFirst()) != null)
+					nonAnalyzedTransactionsScope2.Clear();
+					nonAnalyzedTransactionsScope2.Add(StorageTransactions.instance().transactionPointer(tail.Sbytes()));
+					while ((longPointer2 = nonAnalyzedTransactionsScope2.Poll()) != null)
 					{
 
-						if (StorageScratchpad.instance().AnalyzedTransactionFlag = pointer)
+						if (StorageScratchpad.instance().setAnalyzedTransactionFlag(longPointer2))
 						{
 
-							Transaction transaction = StorageTransactions.instance().loadTransaction(pointer);
+							Transaction transaction = StorageTransactions.instance().loadTransaction((long)longPointer2);
 							if (transaction.type == Storage.PREFILLED_SLOT)
 							{
 								extraTransactions = null;
@@ -205,9 +215,9 @@ namespace com.iota.iri.service
 							}
 							else
 							{
-								extraTransactions.add(new Hash(transaction.hash, 0, Transaction.HASH_SIZE));
-								nonAnalyzedTransactions.AddLast(transaction.trunkTransactionPointer);
-								nonAnalyzedTransactions.AddLast(transaction.branchTransactionPointer);
+								extraTransactions.Add(new Hash(transaction.hash, 0, Transaction.HASH_SIZE));
+								nonAnalyzedTransactionsScope2.Add(transaction.trunkTransactionPointer);
+								nonAnalyzedTransactionsScope2.Add(transaction.branchTransactionPointer);
 							}
 						}
 					}
@@ -220,7 +230,7 @@ namespace com.iota.iri.service
 						foreach (Hash extraTransaction in extraTransactions)
 						{
 
-							Transaction transaction = StorageTransactions.instance().loadTransaction(extraTransaction.bytes());
+							Transaction transaction = StorageTransactions.instance().loadTransaction(extraTransaction.Sbytes());
 							if (transaction != null && transaction.currentIndex == 0)
 							{
 
@@ -228,13 +238,13 @@ namespace com.iota.iri.service
 								foreach (IList<Transaction> bundleTransactions in bundle.Transactions)
 								{
 
-									if (Array.Equals(bundleTransactions.get(0).hash, transaction.hash))
+									if (Array.Equals(bundleTransactions[0].hash, transaction.hash))
 									{
 
 										foreach (Transaction bundleTransaction in bundleTransactions)
 										{
 
-											if (!extraTransactionsCopy.remove(new Hash(bundleTransaction.hash, 0, Transaction.HASH_SIZE)))
+											if (!extraTransactionsCopy.Remove(new Hash(bundleTransaction.hash, 0, Transaction.HASH_SIZE)))
 											{
 												extraTransactionsCopy = null;
 												break;
@@ -250,15 +260,15 @@ namespace com.iota.iri.service
 							}
 						}
 
-						if (extraTransactionsCopy != null && extraTransactionsCopy.Empty)
+						if (extraTransactionsCopy != null && extraTransactionsCopy.Count == 0)
 						{
 
-							IDictionary<Hash, long?> stateCopy = new Dictionary<>(state);
+                            IDictionary<Hash, long?> stateCopy = new Dictionary<Hash, long?>(state);
 
 							foreach (Hash extraTransaction in extraTransactions)
 							{
 
-								Transaction transaction = StorageTransactions.instance().loadTransaction(extraTransaction.bytes());
+								Transaction transaction = StorageTransactions.instance().loadTransaction(extraTransaction.Sbytes());
 								if (transaction.value != 0)
 								{
 									Hash address = new Hash(transaction.address);
@@ -278,10 +288,10 @@ namespace com.iota.iri.service
 
 							if (extraTransactions != null)
 							{
-								if (extraTransactions.size() > bestRating)
+								if (extraTransactions.Count > bestRating)
 								{
 									bestTip = tail;
-									bestRating = extraTransactions.size();
+									bestRating = extraTransactions.Count;
 								}
 							}
 						}
