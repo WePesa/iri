@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Text;
 using slf4net;
@@ -17,7 +18,7 @@ namespace com.iota.iri.conf
 
 		private static readonly ILogger log = LoggerFactory.GetLogger(typeof(Configuration));
 
-		private static readonly IDictionary<string, string> conf = new ConcurrentHashMap<>();
+		private static readonly IDictionary<string, string> conf = new ConcurrentDictionary<string, string>();
 
 		public enum DefaultConfSettings
 		{
