@@ -28,7 +28,7 @@ namespace com.iota.iri.hash
         public virtual void cancel()
         {
             state = CANCELLED;
-            notifyAll();
+            Monitor.PulseAll(this); // notifyAll();
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
@@ -52,8 +52,8 @@ namespace com.iota.iri.hash
 				for (int i = CURL_HASH_LENGTH; i < CURL_STATE_LENGTH; i++)
 				{
 
-					midCurlStateLow[i] = 0b1111111111111111111111111111111111111111111111111111111111111111L;
-					midCurlStateHigh[i] = 0b1111111111111111111111111111111111111111111111111111111111111111L;
+					midCurlStateLow[i] = -1; // 0b1111111111111111111111111111111111111111111111111111111111111111L;
+					midCurlStateHigh[i] = -1; // 0b1111111111111111111111111111111111111111111111111111111111111111L;
 				}
 
 				int offset = 0;
@@ -70,8 +70,8 @@ namespace com.iota.iri.hash
 							case 0:
 							{
 
-								midCurlStateLow[j] = 0b1111111111111111111111111111111111111111111111111111111111111111L;
-								midCurlStateHigh[j] = 0b1111111111111111111111111111111111111111111111111111111111111111L;
+								midCurlStateLow[j] = -1; // 0b1111111111111111111111111111111111111111111111111111111111111111L;
+								midCurlStateHigh[j] = -1; // 0b1111111111111111111111111111111111111111111111111111111111111111L;
 
 							}
 							break;
@@ -79,8 +79,8 @@ namespace com.iota.iri.hash
 							case 1:
 							{
 
-								midCurlStateLow[j] = 0b0000000000000000000000000000000000000000000000000000000000000000L;
-								midCurlStateHigh[j] = 0b1111111111111111111111111111111111111111111111111111111111111111L;
+								midCurlStateLow[j] =  0; // 0b0000000000000000000000000000000000000000000000000000000000000000L;
+								midCurlStateHigh[j] = -1; // 0b1111111111111111111111111111111111111111111111111111111111111111L;
 
 							}
 							break;
@@ -88,8 +88,8 @@ namespace com.iota.iri.hash
 							default:
 							{
 
-								midCurlStateLow[j] = 0b1111111111111111111111111111111111111111111111111111111111111111L;
-								midCurlStateHigh[j] = 0b0000000000000000000000000000000000000000000000000000000000000000L;
+								midCurlStateLow[j] = -1; // 0b1111111111111111111111111111111111111111111111111111111111111111L;
+								midCurlStateHigh[j] = 0; // 0b0000000000000000000000000000000000000000000000000000000000000000L;
 							}
 						break;
 						}
@@ -98,19 +98,20 @@ namespace com.iota.iri.hash
 					transform(midCurlStateLow, midCurlStateHigh, curlScratchpadLow, curlScratchpadHigh);
 				}
 
-				midCurlStateLow[0] = 0b1101101101101101101101101101101101101101101101101101101101101101L;
-				midCurlStateHigh[0] = 0b1011011011011011011011011011011011011011011011011011011011011011L;
-				midCurlStateLow[1] = 0b1111000111111000111111000111111000111111000111111000111111000111L;
-				midCurlStateHigh[1] = 0b1000111111000111111000111111000111111000111111000111111000111111L;
-				midCurlStateLow[2] = 0b0111111111111111111000000000111111111111111111000000000111111111L;
-				midCurlStateHigh[2] = 0b1111111111000000000111111111111111111000000000111111111111111111L;
-				midCurlStateLow[3] = 0b1111111111000000000000000000000000000111111111111111111111111111L;
-				midCurlStateHigh[3] = 0b0000000000111111111111111111111111111111111111111111111111111111L;
+                midCurlStateLow[0] =  -2635249153387078803;  // 0b1101101101101101101101101101101101101101101101101101101101101101L;
+			    midCurlStateHigh[0] = -5270498306774157605;  // 0b1011011011011011011011011011011011011011011011011011011011011011L;
+			    midCurlStateLow[1] =  -1010780497189564473;  // 0b1111000111111000111111000111111000111111000111111000111111000111L;
+			    midCurlStateHigh[1] = -8086243977516515777;  // 0b1000111111000111111000111111000111111000111111000111111000111111L;
+			    midCurlStateLow[2] =   9223336921201902079;  // 0b0111111111111111111000000000111111111111111111000000000111111111L;
+			    midCurlStateHigh[2] = -17979214271348737;    // 0b1111111111000000000111111111111111111000000000111111111111111111L;
+			    midCurlStateLow[3] =  -18014398375264257;    // 0b1111111111000000000000000000000000000111111111111111111111111111L;
+			    midCurlStateHigh[3] =  18014398509481983;    // 0b0000000000111111111111111111111111111111111111111111111111111111L;
+
 			}
 
 			if (numberOfThreads <= 0)
 			{
-				numberOfThreads = Runtime.Runtime.availableProcessors() - 1;
+				numberOfThreads = Environment.ProcessorCount - 1;
 				if (numberOfThreads < 1)
 				{
 					numberOfThreads = 1;
@@ -123,7 +124,54 @@ namespace com.iota.iri.hash
 			{
 
 				int threadIndex = numberOfThreads;
-				Thread worker = (new Thread(() => { long[] midCurlStateCopyLow = new long[CURL_STATE_LENGTH], midCurlStateCopyHigh = new long[CURL_STATE_LENGTH]; Array.Copy(midCurlStateLow, 0, midCurlStateCopyLow, 0, CURL_STATE_LENGTH); Array.Copy(midCurlStateHigh, 0, midCurlStateCopyHigh, 0, CURL_STATE_LENGTH); for (int i = threadIndex; i-- > 0;) { increment(midCurlStateCopyLow, midCurlStateCopyHigh, CURL_HASH_LENGTH / 3, (CURL_HASH_LENGTH / 3) * 2); } long[] curlStateLow = new long[CURL_STATE_LENGTH], curlStateHigh = new long[CURL_STATE_LENGTH]; final long[] curlScratchpadLow = new long[CURL_STATE_LENGTH], curlScratchpadHigh = new long[CURL_STATE_LENGTH]; while (state == RUNNING) { increment(midCurlStateCopyLow, midCurlStateCopyHigh, (CURL_HASH_LENGTH / 3) * 2, CURL_HASH_LENGTH); Array.Copy(midCurlStateCopyLow, 0, curlStateLow, 0, CURL_STATE_LENGTH); Array.Copy(midCurlStateCopyHigh, 0, curlStateHigh, 0, CURL_STATE_LENGTH); transform(curlStateLow, curlStateHigh, curlScratchpadLow, curlScratchpadHigh); NEXT_BIT_INDEX: for (int bitIndex = 64; bitIndex-- > 0;) { for (int i = minWeightMagnitude; i-- > 0;) { if ((((int)(curlStateLow[CURL_HASH_LENGTH - 1 - i] >> bitIndex)) & 1) != (((int)(curlStateHigh[CURL_HASH_LENGTH - 1 - i] >> bitIndex)) & 1)) { continue NEXT_BIT_INDEX; } } synchronized (this) { if (state == RUNNING) { state = COMPLETED; for (int i = 0; i < CURL_HASH_LENGTH; i++) { transactionTrits[TRANSACTION_LENGTH - CURL_HASH_LENGTH + i] = ((((int)(midCurlStateCopyLow[i] >> bitIndex)) & 1) == 0) ? 1 : (((((int)(midCurlStateCopyHigh[i] >> bitIndex)) & 1) == 0) ? -1 : 0); } notifyAll(); } } break; } } }));
+				Thread worker = (new Thread(() =>
+				{
+				    long[] midCurlStateCopyLow = new long[CURL_STATE_LENGTH], midCurlStateCopyHigh = new long[CURL_STATE_LENGTH]; 
+                    Array.Copy(midCurlStateLow, 0, midCurlStateCopyLow, 0, CURL_STATE_LENGTH); 
+                    Array.Copy(midCurlStateHigh, 0, midCurlStateCopyHigh, 0, CURL_STATE_LENGTH);
+
+				    for (int i = threadIndex; i-- > 0;)
+				    {
+				        increment(midCurlStateCopyLow, midCurlStateCopyHigh, CURL_HASH_LENGTH / 3, (CURL_HASH_LENGTH / 3) * 2);
+				    } 
+                    
+                    long[] curlStateLow = new long[CURL_STATE_LENGTH], curlStateHigh = new long[CURL_STATE_LENGTH]; 
+                    long[] curlScratchpadLow = new long[CURL_STATE_LENGTH], curlScratchpadHigh = new long[CURL_STATE_LENGTH];
+
+				    while (state == RUNNING)
+				    {
+				        increment(midCurlStateCopyLow, midCurlStateCopyHigh, (CURL_HASH_LENGTH / 3) * 2, CURL_HASH_LENGTH); 
+                        Array.Copy(midCurlStateCopyLow, 0, curlStateLow, 0, CURL_STATE_LENGTH); 
+                        Array.Copy(midCurlStateCopyHigh, 0, curlStateHigh, 0, CURL_STATE_LENGTH); 
+                        transform(curlStateLow, curlStateHigh, curlScratchpadLow, curlScratchpadHigh); 
+                    NEXT_BIT_INDEX:
+				        for (int bitIndex = 64; bitIndex-- > 0;)
+				        {
+				            for (int i = minWeightMagnitude; i-- > 0;)
+				            {
+				                if ((((int) (curlStateLow[CURL_HASH_LENGTH - 1 - i] >> bitIndex)) & 1) !=
+				                    (((int) (curlStateHigh[CURL_HASH_LENGTH - 1 - i] >> bitIndex)) & 1))
+				                {
+				                    goto NEXT_BIT_INDEX;
+				                }
+				            }
+
+                            lock (this)
+                            {
+				                if (state == RUNNING)
+				                {
+				                    state = COMPLETED;
+				                    for (int i = 0; i < CURL_HASH_LENGTH; i++)
+				                    {
+				                        transactionTrits[TRANSACTION_LENGTH - CURL_HASH_LENGTH + i] = ((((int)(midCurlStateCopyLow[i] >> bitIndex)) & 1) == 0) ? 1 : (((((int)(midCurlStateCopyHigh[i] >> bitIndex)) & 1) == 0) ? -1 : 0);
+				                    }
+                                    Monitor.PulseAll(this); // notifyAll();
+				                }
+				            } break;
+				        }
+				    }
+				}));
+
 				workers[threadIndex] = worker;
 				worker.Start();
 			}
@@ -132,10 +180,10 @@ namespace com.iota.iri.hash
 			{
 				while (state == RUNNING)
 				{
-					wait();
+                    Monitor.Wait(this); // wait();
 				}
 			}
-			catch (InterruptedException e)
+            catch (ThreadInterruptedException e)
 			{
 				state = CANCELLED;
 			}
@@ -146,7 +194,7 @@ namespace com.iota.iri.hash
 				{
 					workers[i].Join();
 				}
-				catch (InterruptedException e)
+                catch (ThreadInterruptedException e)
 				{
 					state = CANCELLED;
 				}
@@ -184,20 +232,20 @@ namespace com.iota.iri.hash
 
 			for (int i = fromIndex; i < toIndex; i++)
 			{
-				if (midCurlStateCopyLow[i] == 0b0000000000000000000000000000000000000000000000000000000000000000L)
+				if (midCurlStateCopyLow[i] == 0 /* 0b0000000000000000000000000000000000000000000000000000000000000000L */)
 				{
-					midCurlStateCopyLow[i] = 0b1111111111111111111111111111111111111111111111111111111111111111L;
-					midCurlStateCopyHigh[i] = 0b0000000000000000000000000000000000000000000000000000000000000000L;
+					midCurlStateCopyLow[i] = -1; // 0b1111111111111111111111111111111111111111111111111111111111111111L;
+					midCurlStateCopyHigh[i] = 0; // 0b0000000000000000000000000000000000000000000000000000000000000000L;
 				}
 				else
 				{
-					if (midCurlStateCopyHigh[i] == 0b0000000000000000000000000000000000000000000000000000000000000000L)
+					if (midCurlStateCopyHigh[i] == 0 /* 0b0000000000000000000000000000000000000000000000000000000000000000L */)
 					{
-						midCurlStateCopyHigh[i] = 0b1111111111111111111111111111111111111111111111111111111111111111L;
+						midCurlStateCopyHigh[i] = -1; // 0b1111111111111111111111111111111111111111111111111111111111111111L;
 					}
 					else
 					{
-						midCurlStateCopyLow[i] = 0b0000000000000000000000000000000000000000000000000000000000000000L;
+                        midCurlStateCopyLow[i] = 0; // 0b0000000000000000000000000000000000000000000000000000000000000000L;
 					}
 					break;
 				}
