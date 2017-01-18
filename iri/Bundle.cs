@@ -24,7 +24,7 @@ namespace com.iota.iri
 	public class Bundle
 	{
 
-		private readonly IList<IList<Transaction>> transactions = new LinkedList<>();
+        private readonly List<List<Transaction>> transactions = new List<List<Transaction>>();
 
 		public Bundle(sbyte[] bundle)
 		{
@@ -41,10 +41,10 @@ namespace com.iota.iri
             {
                     var transaction = item.Value;
 
-				if (transaction.currentIndex == 0 && transaction.validity() >= 0)
+                    if (transaction.currentIndex == 0 && transaction.Validity() >= 0)
 				{
 
-					IList<Transaction> instanceTransactions = new List<Transaction>();
+					List<Transaction> instanceTransactions = new List<Transaction>();
 
 					long lastIndex = transaction.lastIndex;
 					long bundleValue = 0;
@@ -67,13 +67,13 @@ namespace com.iota.iri
 							if (bundleValue == 0)
 							{
 
-								if (instanceTransactions[0].validity() == 0)
+                                if (instanceTransactions[0].Validity() == 0)
 								{
 
 									Curl bundleHash = new Curl();
 									foreach (Transaction transaction2 in instanceTransactions)
 									{
-										bundleHash.absorb(transaction2.trits(), Transaction.ESSENCE_TRINARY_OFFSET, Transaction.ESSENCE_TRINARY_SIZE);
+										bundleHash.absorb(transaction2.Trits(), Transaction.ESSENCE_TRINARY_OFFSET, Transaction.ESSENCE_TRINARY_SIZE);
 									}
 
 									int[] bundleHashTrits = new int[Transaction.BUNDLE_TRINARY_SIZE];
@@ -94,7 +94,7 @@ namespace com.iota.iri
 												do
 												{
 
-													address.absorb(ISS.digest(Arrays.copyOfRange(normalizedBundle, offset, offset = (offset + ISS.NUMBER_OF_FRAGMENT_CHUNKS) % (Curl.HASH_LENGTH / Converter.NUMBER_OF_TRITS_IN_A_TRYTE)), Arrays.copyOfRange(instanceTransactions[j].trits(), Transaction.SIGNATURE_MESSAGE_FRAGMENT_TRINARY_OFFSET, Transaction.SIGNATURE_MESSAGE_FRAGMENT_TRINARY_OFFSET + Transaction.SIGNATURE_MESSAGE_FRAGMENT_TRINARY_SIZE)), 0, Curl.HASH_LENGTH);
+													address.absorb(ISS.digest(Arrays.copyOfRange(normalizedBundle, offset, offset = (offset + ISS.NUMBER_OF_FRAGMENT_CHUNKS) % (Curl.HASH_LENGTH / Converter.NUMBER_OF_TRITS_IN_A_TRYTE)), Arrays.copyOfRange(instanceTransactions[j].Trits(), Transaction.SIGNATURE_MESSAGE_FRAGMENT_TRINARY_OFFSET, Transaction.SIGNATURE_MESSAGE_FRAGMENT_TRINARY_OFFSET + Transaction.SIGNATURE_MESSAGE_FRAGMENT_TRINARY_SIZE)), 0, Curl.HASH_LENGTH);
 
 												} while (++j < instanceTransactions.Count && Array.Equals(instanceTransactions[j].address, transaction.address) && instanceTransactions[j].value == 0);
 
@@ -157,7 +157,7 @@ namespace com.iota.iri
 			return bundleTransactions;
 		}
 
-		public virtual IList<IList<Transaction>> Transactions
+		public virtual List<List<Transaction>> Transactions
 		{
 			get
 			{
