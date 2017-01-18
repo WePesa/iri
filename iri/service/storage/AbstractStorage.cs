@@ -1,6 +1,6 @@
 using System;
-
 // 1.1.2.3
+using System.IO.MemoryMappedFiles;
 
 namespace com.iota.iri.service.storage
 {
@@ -8,6 +8,7 @@ namespace com.iota.iri.service.storage
 
 	public abstract class AbstractStorage
 	{
+        public const int SBYTE_SIZE_IN_BITS = 8;
 
 		public const int CELL_SIZE = 2048;
 
@@ -15,15 +16,15 @@ namespace com.iota.iri.service.storage
 		public const int CHUNK_SIZE = CELL_SIZE * CELLS_PER_CHUNK;
 		public const int MAX_NUMBER_OF_CHUNKS = 16384; // Limits the storage capacity to ~1 billion transactions
 
-		public const int TIPS_FLAGS_OFFSET = 0, TIPS_FLAGS_SIZE = MAX_NUMBER_OF_CHUNKS * CELLS_PER_CHUNK / sbyte.SIZE;
+        public const int TIPS_FLAGS_OFFSET = 0, TIPS_FLAGS_SIZE = MAX_NUMBER_OF_CHUNKS * CELLS_PER_CHUNK / SBYTE_SIZE_IN_BITS;
 
-		public const int SUPER_GROUPS_OFFSET = TIPS_FLAGS_OFFSET + TIPS_FLAGS_SIZE, SUPER_GROUPS_SIZE = (short.MAX_VALUE - short.MIN_VALUE + 1) * CELL_SIZE;
+		public const int SUPER_GROUPS_OFFSET = TIPS_FLAGS_OFFSET + TIPS_FLAGS_SIZE, SUPER_GROUPS_SIZE = (short.MaxValue - short.MinValue + 1) * CELL_SIZE;
 
 		public const int CELLS_OFFSET = SUPER_GROUPS_OFFSET + SUPER_GROUPS_SIZE;
 
 		public const int TRANSACTIONS_TO_REQUEST_OFFSET = 0, TRANSACTIONS_TO_REQUEST_SIZE = CHUNK_SIZE;
 
-		public const int ANALYZED_TRANSACTIONS_FLAGS_OFFSET = TRANSACTIONS_TO_REQUEST_OFFSET + TRANSACTIONS_TO_REQUEST_SIZE, ANALYZED_TRANSACTIONS_FLAGS_SIZE = MAX_NUMBER_OF_CHUNKS * CELLS_PER_CHUNK / sbyte.SIZE;
+        public const int ANALYZED_TRANSACTIONS_FLAGS_OFFSET = TRANSACTIONS_TO_REQUEST_OFFSET + TRANSACTIONS_TO_REQUEST_SIZE, ANALYZED_TRANSACTIONS_FLAGS_SIZE = MAX_NUMBER_OF_CHUNKS * CELLS_PER_CHUNK / SBYTE_SIZE_IN_BITS;
 
 		public const int ANALYZED_TRANSACTIONS_FLAGS_COPY_OFFSET = ANALYZED_TRANSACTIONS_FLAGS_OFFSET + ANALYZED_TRANSACTIONS_FLAGS_SIZE, ANALYZED_TRANSACTIONS_FLAGS_COPY_SIZE = ANALYZED_TRANSACTIONS_FLAGS_SIZE;
 
@@ -56,12 +57,12 @@ namespace com.iota.iri.service.storage
 			buffer[offset + 7] = (sbyte)(value >> 56);
 		}
 
-		protected internal static bool flush(ByteBuffer buffer)
+        protected internal static bool flush(MemoryMappedViewStream buffer)
 		{
 
 			try
 			{
-				((MappedByteBuffer) buffer).force();
+                buffer.Flush();
 				return true;
 
 			}

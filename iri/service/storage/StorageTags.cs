@@ -1,8 +1,12 @@
 using System;
 using System.Collections.Generic;
-// 1.1.2.3
+
 using System.IO;
+using System.IO.MemoryMappedFiles;
+using System.Threading;
 using slf4net;
+
+// 1.1.2.3
 
 namespace com.iota.iri.service.storage
 {
@@ -16,9 +20,22 @@ namespace com.iota.iri.service.storage
 
         private static readonly StorageTags _instance = new StorageTags();
 
-		private FileChannel tagsChannel;
-		private readonly ByteBuffer[] tagsChunks = new ByteBuffer[MAX_NUMBER_OF_CHUNKS];
-		private volatile long tagsNextPointer = SUPER_GROUPS_SIZE;
+        private MemoryMappedFile tagsChannel;
+        private static readonly MemoryMappedViewStream[] tagsChunks = new MemoryMappedViewStream[MAX_NUMBER_OF_CHUNKS];
+
+        private static long tagsNextPointer = SUPER_GROUPS_SIZE;
+
+        internal static long TagsNextPointer
+        {
+            get
+            {
+                return Interlocked.Read(ref tagsNextPointer);
+            }
+            set
+            {
+                Interlocked.Exchange(ref tagsNextPointer, value);
+            }
+        }
 
 		private const string TAGS_FILE_NAME = "tags.iri";
 
@@ -33,19 +50,19 @@ namespace com.iota.iri.service.storage
 		        while (true)
 		        {
 
-		            if ((tagsNextPointer & (CHUNK_SIZE - 1)) == 0)
+		            if ((TagsNextPointer & (CHUNK_SIZE - 1)) == 0)
 		            {
-		                tagsChunks[(int) (tagsNextPointer >> 27)] = tagsChannel.map(FileChannel.MapMode.READ_WRITE,
-		                    tagsNextPointer, CHUNK_SIZE);
+		                tagsChunks[(int) (TagsNextPointer >> 27)] = tagsChannel.map(FileChannel.MapMode.READ_WRITE,
+		                    TagsNextPointer, CHUNK_SIZE);
 		            }
 
-		            if (tagsChannelSize - tagsNextPointer > CHUNK_SIZE)
+		            if (tagsChannelSize - TagsNextPointer > CHUNK_SIZE)
 		            {
-		                tagsNextPointer += CHUNK_SIZE;
+		                TagsNextPointer += CHUNK_SIZE;
 		            }
 		            else
 		            {
-		                tagsChunks[(int) (tagsNextPointer >> 27)].get(mainBuffer);
+		                tagsChunks[(int) (TagsNextPointer >> 27)].get(mainBuffer);
 		                bool empty = true;
 		                foreach (int value in mainBuffer)
 		                {
@@ -60,7 +77,7 @@ namespace com.iota.iri.service.storage
 		                    break;
 		                }
 
-		                tagsNextPointer += CELL_SIZE;
+		                TagsNextPointer += CELL_SIZE;
 		            }
 		        }
 		    }
@@ -176,13 +193,13 @@ namespace com.iota.iri.service.storage
 		private void appendToTags()
 		{
 
-			((ByteBuffer) tagsChunks[(int)(tagsNextPointer >> 27)].position((int)(tagsNextPointer & (CHUNK_SIZE - 1)))).put(mainBuffer);
-			if (((tagsNextPointer += CELL_SIZE) & (CHUNK_SIZE - 1)) == 0)
+			((ByteBuffer) tagsChunks[(int)(TagsNextPointer >> 27)].position((int)(TagsNextPointer & (CHUNK_SIZE - 1)))).put(mainBuffer);
+			if (((TagsNextPointer += CELL_SIZE) & (CHUNK_SIZE - 1)) == 0)
 			{
 
 				try
 				{
-					tagsChunks[(int)(tagsNextPointer >> 27)] = tagsChannel.map(FileChannel.MapMode.READ_WRITE, tagsNextPointer, CHUNK_SIZE);
+					tagsChunks[(int)(TagsNextPointer >> 27)] = tagsChannel.map(FileChannel.MapMode.READ_WRITE, TagsNextPointer, CHUNK_SIZE);
 				}
 				catch (IOException e)
 				{
@@ -212,7 +229,7 @@ namespace com.iota.iri.service.storage
 							if ((pointer = value(mainBuffer, (transaction.tag[depth] + 128) << 3)) == 0)
 							{
 
-								setValue(mainBuffer, (transaction.tag[depth] + 128) << 3, tagsNextPointer);
+								setValue(mainBuffer, (transaction.tag[depth] + 128) << 3, TagsNextPointer);
 								((ByteBuffer) tagsChunks[(int)(prevPointer >> 27)].position((int)(prevPointer & (CHUNK_SIZE - 1)))).put(mainBuffer);
 
 								Array.Copy(ZEROED_BUFFER, 0, mainBuffer, 0, CELL_SIZE);
@@ -239,20 +256,20 @@ namespace com.iota.iri.service.storage
 									int differentHashByte = mainBuffer[Transaction.HASH_OFFSET + j];
 
 									((ByteBuffer) tagsChunks[(int)(prevPointer >> 27)].position((int)(prevPointer & (CHUNK_SIZE - 1)))).get(mainBuffer);
-									setValue(mainBuffer, (transaction.tag[depth - 1] + 128) << 3, tagsNextPointer);
+									setValue(mainBuffer, (transaction.tag[depth - 1] + 128) << 3, TagsNextPointer);
 									((ByteBuffer) tagsChunks[(int)(prevPointer >> 27)].position((int)(prevPointer & (CHUNK_SIZE - 1)))).put(mainBuffer);
 
 									for (int k = depth; k < j; k++)
 									{
 
 										Array.Copy(ZEROED_BUFFER, 0, mainBuffer, 0, CELL_SIZE);
-										setValue(mainBuffer, (transaction.tag[k] + 128) << 3, tagsNextPointer + CELL_SIZE);
+										setValue(mainBuffer, (transaction.tag[k] + 128) << 3, TagsNextPointer + CELL_SIZE);
 										appendToTags();
 									}
 
 									Array.Copy(ZEROED_BUFFER, 0, mainBuffer, 0, CELL_SIZE);
 									setValue(mainBuffer, (differentHashByte + 128) << 3, pointer);
-									setValue(mainBuffer, (transaction.tag[j] + 128) << 3, tagsNextPointer + CELL_SIZE);
+									setValue(mainBuffer, (transaction.tag[j] + 128) << 3, TagsNextPointer + CELL_SIZE);
 									appendToTags();
 
 									Array.Copy(ZEROED_BUFFER, 0, mainBuffer, 0, CELL_SIZE);
@@ -285,7 +302,7 @@ namespace com.iota.iri.service.storage
 										if (nextCellPointer == 0)
 										{
 
-											setValue(mainBuffer, offset, tagsNextPointer);
+											setValue(mainBuffer, offset, TagsNextPointer);
 											((ByteBuffer) tagsChunks[(int)(pointer >> 27)].position((int)(pointer & (CHUNK_SIZE - 1)))).put(mainBuffer);
 
 											Array.Copy(ZEROED_BUFFER, 0, mainBuffer, 0, CELL_SIZE);

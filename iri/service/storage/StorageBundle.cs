@@ -1,6 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.MemoryMappedFiles;
+using System.Runtime.CompilerServices;
+using System.Threading;
 using slf4net;
 
 // 1.1.2.3.
@@ -18,36 +21,50 @@ namespace com.iota.iri.service.storage
         private static readonly StorageBundle _instance = new StorageBundle();
         private const string BUNDLES_FILE_NAME = "bundles.iri";
 
-        private FileChannel bundlesChannel;
-        private readonly ByteBuffer[] bundlesChunks = new ByteBuffer[MAX_NUMBER_OF_CHUNKS];
-        private volatile long bundlesNextPointer = SUPER_GROUPS_SIZE;
+        private MemoryMappedFile bundlesChannel;
+        private static readonly MemoryMappedViewStream[] bundlesChunks = new MemoryMappedViewStream[MAX_NUMBER_OF_CHUNKS];
+
+        private static long bundlesNextPointer = SUPER_GROUPS_SIZE;
+
+        internal static long BundlesNextPointer
+        {
+            get
+            {
+                return Interlocked.Read(ref bundlesNextPointer);
+            }
+            set
+            {
+                Interlocked.Exchange(ref bundlesNextPointer, value);
+            }
+        }
 
         public override void init()
         {
             try
             {
-                bundlesChannel = FileChannel.open(Paths.get(BUNDLES_FILE_NAME), StandardOpenOption.CREATE,
-                    StandardOpenOption.READ, StandardOpenOption.WRITE);
-                bundlesChunks[0] = bundlesChannel.map(FileChannel.MapMode.READ_WRITE, 0, SUPER_GROUPS_SIZE);
-                long bundlesChannelSize = bundlesChannel.size();
+                bundlesChannel = MemoryMappedFile.CreateFromFile(Path.GetFileName(BUNDLES_FILE_NAME), FileMode.OpenOrCreate, "bundlesMap", SUPER_GROUPS_SIZE);
+
+                bundlesChunks[0] = bundlesChannel.CreateViewStream(0, SUPER_GROUPS_SIZE);
+
+                long bundlesChannelSize = SUPER_GROUPS_SIZE; // bundlesChannel.size();
                 while (true)
                 {
 
-                    if ((bundlesNextPointer & (CHUNK_SIZE - 1)) == 0)
+                    if ((BundlesNextPointer & (CHUNK_SIZE - 1)) == 0)
                     {
-                        bundlesChunks[(int) (bundlesNextPointer >> 27)] =
-                            bundlesChannel.map(FileChannel.MapMode.READ_WRITE, bundlesNextPointer, CHUNK_SIZE);
+                        bundlesChunks[(int)(BundlesNextPointer >> 27)] = bundlesChannel.CreateViewStream(BundlesNextPointer, CHUNK_SIZE);
                     }
 
-                    if (bundlesChannelSize - bundlesNextPointer > CHUNK_SIZE)
+                    if (bundlesChannelSize - BundlesNextPointer > CHUNK_SIZE)
                     {
-                        bundlesNextPointer += CHUNK_SIZE;
+                        BundlesNextPointer += CHUNK_SIZE;
 
                     }
                     else
                     {
 
-                        bundlesChunks[(int) (bundlesNextPointer >> 27)].get(mainBuffer);
+                        // bundlesChunks[(int) (BundlesNextPointer >> 27)].get(mainBuffer);
+                        bundlesChunks[(int)(BundlesNextPointer >> 27)].Read((byte[])(Array)mainBuffer, 0, mainBuffer.Length);
                         bool empty = true;
                         foreach (int value in mainBuffer)
                         {
@@ -62,7 +79,7 @@ namespace com.iota.iri.service.storage
                         {
                             break;
                         }
-                        bundlesNextPointer += CELL_SIZE;
+                        BundlesNextPointer += CELL_SIZE;
                     }
                 }
             }
@@ -83,7 +100,7 @@ namespace com.iota.iri.service.storage
 
             try
             {
-                bundlesChannel.close();
+                bundlesChannel.Dispose();
             }
             catch (IOException e)
             {
@@ -92,90 +109,111 @@ namespace com.iota.iri.service.storage
 
         }
 
-        public virtual long bundlePointer(sbyte[] hash)
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public static long bundlePointer(sbyte[] hash)
         {
-            lock (typeof(Storage))
+
+            long pointer = ((hash[0] + 128) + ((hash[1] + 128) << 8)) << 11;
+            for (int depth = 2; depth < Transaction.BUNDLE_SIZE; depth++)
             {
-                long pointer = ((hash[0] + 128) + ((hash[1] + 128) << 8)) << 11;
-                for (int depth = 2; depth < Transaction.BUNDLE_SIZE; depth++)
+
+                // ((ByteBuffer)bundlesChunks[(int)(pointer >> 27)].position((int)(pointer & (CHUNK_SIZE - 1)))).get(mainBuffer);
+                bundlesChunks[(int)(pointer >> 27)].Position = (int)(pointer & (CHUNK_SIZE - 1));
+                bundlesChunks[(int)(pointer >> 27)].Read((byte[])(Array)mainBuffer, 0, mainBuffer.Length);
+
+                if (mainBuffer[Transaction.TYPE_OFFSET] == GROUP)
                 {
 
-                    ((ByteBuffer)bundlesChunks[(int)(pointer >> 27)].position((int)(pointer & (CHUNK_SIZE - 1)))).get(mainBuffer);
-
-                    if (mainBuffer[Transaction.TYPE_OFFSET] == GROUP)
+                    if ((pointer = value(mainBuffer, (hash[depth] + 128) << 3)) == 0)
                     {
-                        if ((pointer = value(mainBuffer, (hash[depth] + 128) << 3)) == 0)
+                        return 0;
+                    }
+
+                }
+                else
+                {
+
+                    for (; depth < Transaction.BUNDLE_SIZE; depth++)
+                    {
+
+                        if (mainBuffer[Transaction.HASH_OFFSET + depth] != hash[depth])
                         {
                             return 0;
                         }
                     }
-                    else
-                    {
-                        for (; depth < Transaction.BUNDLE_SIZE; depth++)
-                        {
-                            if (mainBuffer[Transaction.HASH_OFFSET + depth] != hash[depth])
-                            {
-                                return 0;
-                            }
-                        }
-                        return pointer;
-                    }
+
+                    return pointer;
                 }
             }
-            throw new IllegalStateException("Corrupted storage");
+
+            throw new InvalidOperationException("Corrupted storage");
         }
 
 
-        public virtual IList<long?> bundleTransactions(long pointer)
-		{
-			lock (typeof(Storage))
-			{
-			IList<long?> bundleTransactions = new LinkedList<>();
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public static IList<long?> bundleTransactions(long pointer)
+        {
 
-			if (pointer != 0)
-			{
+            List<long?> bundleTransactions = new List<long?>();
 
-				((ByteBuffer) bundlesChunks[(int)(pointer >> 27)].position((int)(pointer & (CHUNK_SIZE - 1)))).get(mainBuffer);
-				int offset = ZEROTH_POINTER_OFFSET - long.BYTES;
-				while (true)
-				{
+            if (pointer != 0)
+            {
 
-					while ((offset += long.BYTES) < CELL_SIZE - long.BYTES)
-					{
+                // ((ByteBuffer) bundlesChunks[(int)(pointer >> 27)].position((int)(pointer & (CHUNK_SIZE - 1)))).get(mainBuffer);
+                bundlesChunks[(int)(pointer >> 27)].Position = (int)(pointer & (CHUNK_SIZE - 1));
+                bundlesChunks[(int)(pointer >> 27)].Read((byte[])(Array)mainBuffer, 0, mainBuffer.Length);
 
-						long transactionPointer = value(mainBuffer, offset);
-						if (transactionPointer == 0)
-						{
-							break;
-						}
-						else
-						{
-							bundleTransactions.Add(transactionPointer);
-						}
-					}
-					if (offset == CELL_SIZE - long.BYTES)
-					{
+                int offset = ZEROTH_POINTER_OFFSET - sizeof(long);
+                while (true)
+                {
 
-						long nextCellPointer = value(mainBuffer, offset);
-						if (nextCellPointer == 0)
-						{
-							break;
-						}
-						else
-						{
-							((ByteBuffer) bundlesChunks[(int)(nextCellPointer >> 27)].position((int)(nextCellPointer & (CHUNK_SIZE - 1)))).get(mainBuffer);
-							offset = -long.BYTES;
-						}
-					}
-					else
-					{
-						break;
-					}
-				}
-			}
-			return bundleTransactions;
-			}
-		}
+                    while ((offset += sizeof(long)) < CELL_SIZE - sizeof(long))
+                    {
+
+                        long transactionPointer = value(mainBuffer, offset);
+                        if (transactionPointer == 0)
+                        {
+
+                            break;
+
+                        }
+                        else
+                        {
+
+                            bundleTransactions.Add(transactionPointer);
+                        }
+                    }
+                    if (offset == CELL_SIZE - sizeof(long))
+                    {
+
+                        long nextCellPointer = value(mainBuffer, offset);
+                        if (nextCellPointer == 0)
+                        {
+
+                            break;
+
+                        }
+                        else
+                        {
+
+                            // ((ByteBuffer) bundlesChunks[(int)(nextCellPointer >> 27)].position((int)(nextCellPointer & (CHUNK_SIZE - 1)))).get(mainBuffer);
+                            bundlesChunks[(int)(nextCellPointer >> 27)].Position = (int)(nextCellPointer & (CHUNK_SIZE - 1));
+                            bundlesChunks[(int)(nextCellPointer >> 27)].Read((byte[])(Array)mainBuffer, 0, mainBuffer.Length);
+
+                            offset = -sizeof(long);
+                        }
+
+                    }
+                    else
+                    {
+
+                        break;
+                    }
+                }
+            }
+
+            return bundleTransactions;
+        }
 
         public virtual void updateBundle(long transactionPointer, Transaction transaction)
         {
@@ -184,7 +222,9 @@ namespace com.iota.iri.service.storage
                 for (int depth = 2; depth < Transaction.BUNDLE_SIZE; depth++)
                 {
 
-                    ((ByteBuffer)bundlesChunks[(int)(pointer >> 27)].position((int)(pointer & (CHUNK_SIZE - 1)))).get(mainBuffer);
+                    // ((ByteBuffer)bundlesChunks[(int)(pointer >> 27)].position((int)(pointer & (CHUNK_SIZE - 1)))).get(mainBuffer);
+                    bundlesChunks[(int)(pointer >> 27)].Position = (int)(pointer & (CHUNK_SIZE - 1));
+                    bundlesChunks[(int)(pointer >> 27)].Read((byte[])(Array)mainBuffer, 0, mainBuffer.Length); 
 
                     if (mainBuffer[Transaction.TYPE_OFFSET] == GROUP)
                     {
@@ -193,8 +233,10 @@ namespace com.iota.iri.service.storage
                         if ((pointer = value(mainBuffer, (transaction.bundle[depth] + 128) << 3)) == 0)
                         {
 
-                            setValue(mainBuffer, (transaction.bundle[depth] + 128) << 3, bundlesNextPointer);
-                            ((ByteBuffer)bundlesChunks[(int)(prevPointer >> 27)].position((int)(prevPointer & (CHUNK_SIZE - 1)))).put(mainBuffer);
+                            setValue(mainBuffer, (transaction.bundle[depth] + 128) << 3, BundlesNextPointer);
+                            // ((ByteBuffer)bundlesChunks[(int)(prevPointer >> 27)].position((int)(prevPointer & (CHUNK_SIZE - 1)))).put(mainBuffer);
+                            bundlesChunks[(int)(prevPointer >> 27)].Position = (int)(prevPointer & (CHUNK_SIZE - 1));
+                            bundlesChunks[(int)(prevPointer >> 27)].Write((byte[])(Array)mainBuffer, 0, mainBuffer.Length);
 
                             emptyMainBuffer();
                             mainBuffer[Transaction.TYPE_OFFSET] = FILLED_SLOT;
@@ -218,20 +260,25 @@ namespace com.iota.iri.service.storage
 
                                 int differentHashByte = mainBuffer[Transaction.HASH_OFFSET + i];
 
-                                ((ByteBuffer)bundlesChunks[(int)(prevPointer >> 27)].position((int)(prevPointer & (CHUNK_SIZE - 1)))).get(mainBuffer);
-                                setValue(mainBuffer, (transaction.bundle[depth - 1] + 128) << 3, bundlesNextPointer);
-                                ((ByteBuffer)bundlesChunks[(int)(prevPointer >> 27)].position((int)(prevPointer & (CHUNK_SIZE - 1)))).put(mainBuffer);
+                                // ((ByteBuffer)bundlesChunks[(int)(prevPointer >> 27)].position((int)(prevPointer & (CHUNK_SIZE - 1)))).get(mainBuffer);
+                                bundlesChunks[(int)(prevPointer >> 27)].Position = (int)(prevPointer & (CHUNK_SIZE - 1));
+                                bundlesChunks[(int)(prevPointer >> 27)].Read((byte[])(Array)mainBuffer, 0, mainBuffer.Length);
+
+                                setValue(mainBuffer, (transaction.bundle[depth - 1] + 128) << 3, BundlesNextPointer);
+                                // ((ByteBuffer)bundlesChunks[(int)(prevPointer >> 27)].position((int)(prevPointer & (CHUNK_SIZE - 1)))).put(mainBuffer);
+                                bundlesChunks[(int)(prevPointer >> 27)].Position = (int)(prevPointer & (CHUNK_SIZE - 1));
+                                bundlesChunks[(int)(prevPointer >> 27)].Write((byte[])(Array)mainBuffer, 0, mainBuffer.Length);
 
                                 for (int j = depth; j < i; j++)
                                 {
                                     emptyMainBuffer();
-                                    setValue(mainBuffer, (transaction.bundle[j] + 128) << 3, bundlesNextPointer + CELL_SIZE);
+                                    setValue(mainBuffer, (transaction.bundle[j] + 128) << 3, BundlesNextPointer + CELL_SIZE);
                                     appendToBundles();
                                 }
 
                                 Array.Copy(ZEROED_BUFFER, 0, mainBuffer, 0, CELL_SIZE);
                                 setValue(mainBuffer, (differentHashByte + 128) << 3, pointer);
-                                setValue(mainBuffer, (transaction.bundle[i] + 128) << 3, bundlesNextPointer + CELL_SIZE);
+                                setValue(mainBuffer, (transaction.bundle[i] + 128) << 3, BundlesNextPointer + CELL_SIZE);
                                 appendToBundles();
 
                                 Array.Copy(ZEROED_BUFFER, 0, mainBuffer, 0, CELL_SIZE);
@@ -253,20 +300,22 @@ namespace com.iota.iri.service.storage
                             while (true)
                             {
 
-                                while ((offset += long.BYTES) < CELL_SIZE - long.BYTES && value(mainBuffer, offset) != 0)
+                                while ((offset += sizeof(long)) < CELL_SIZE - sizeof(long) && value(mainBuffer, offset) != 0)
                                 {
 
                                     // Do nothing
                                 }
-                                if (offset == CELL_SIZE - long.BYTES)
+                                if (offset == CELL_SIZE - sizeof(long))
                                 {
 
                                     long nextCellPointer = value(mainBuffer, offset);
                                     if (nextCellPointer == 0)
                                     {
 
-                                        setValue(mainBuffer, offset, bundlesNextPointer);
-                                        ((ByteBuffer)bundlesChunks[(int)(pointer >> 27)].position((int)(pointer & (CHUNK_SIZE - 1)))).put(mainBuffer);
+                                        setValue(mainBuffer, offset, BundlesNextPointer);
+                                        // ((ByteBuffer)bundlesChunks[(int)(pointer >> 27)].position((int)(pointer & (CHUNK_SIZE - 1)))).put(mainBuffer);
+                                        bundlesChunks[(int)(pointer >> 27)].Position = (int)(pointer & (CHUNK_SIZE - 1));
+                                        bundlesChunks[(int)(pointer >> 27)].Write((byte[])(Array)mainBuffer, 0, mainBuffer.Length);
 
                                         Array.Copy(ZEROED_BUFFER, 0, mainBuffer, 0, CELL_SIZE);
                                         setValue(mainBuffer, 0, transactionPointer);
@@ -278,15 +327,19 @@ namespace com.iota.iri.service.storage
                                     else
                                     {
                                         pointer = nextCellPointer;
-                                        ((ByteBuffer)bundlesChunks[(int)(pointer >> 27)].position((int)(pointer & (CHUNK_SIZE - 1)))).get(mainBuffer);
-                                        offset = -long.BYTES;
+                                        // ((ByteBuffer)bundlesChunks[(int)(pointer >> 27)].position((int)(pointer & (CHUNK_SIZE - 1)))).get(mainBuffer);
+                                        bundlesChunks[(int)(pointer >> 27)].Position = (int)(pointer & (CHUNK_SIZE - 1));
+                                        bundlesChunks[(int)(pointer >> 27)].Read((byte[])(Array)mainBuffer, 0, mainBuffer.Length); 
+                                        offset = -sizeof(long);
                                     }
 
                                 }
                                 else
                                 {
                                     setValue(mainBuffer, offset, transactionPointer);
-                                    ((ByteBuffer)bundlesChunks[(int)(pointer >> 27)].position((int)(pointer & (CHUNK_SIZE - 1)))).put(mainBuffer);
+                                    // ((ByteBuffer)bundlesChunks[(int)(pointer >> 27)].position((int)(pointer & (CHUNK_SIZE - 1)))).put(mainBuffer);
+                                    bundlesChunks[(int)(pointer >> 27)].Position = (int)(pointer & (CHUNK_SIZE - 1));
+                                    bundlesChunks[(int)(pointer >> 27)].Write((byte[])(Array)mainBuffer, 0, mainBuffer.Length);
                                     break;
                                 }
                             }
@@ -301,13 +354,17 @@ namespace com.iota.iri.service.storage
         private void appendToBundles()
         {
 
-            ((ByteBuffer)bundlesChunks[(int)(bundlesNextPointer >> 27)].position((int)(bundlesNextPointer & (CHUNK_SIZE - 1)))).put(mainBuffer);
-            if (((bundlesNextPointer += CELL_SIZE) & (CHUNK_SIZE - 1)) == 0)
+            // ((ByteBuffer)bundlesChunks[(int)(BundlesNextPointer >> 27)].position((int)(BundlesNextPointer & (CHUNK_SIZE - 1)))).put(mainBuffer);
+            bundlesChunks[(int)(BundlesNextPointer >> 27)].Position = (int)(BundlesNextPointer & (CHUNK_SIZE - 1));
+            bundlesChunks[(int)(BundlesNextPointer >> 27)].Write((byte[])(Array)mainBuffer, 0, mainBuffer.Length);
+
+            if (((BundlesNextPointer += CELL_SIZE) & (CHUNK_SIZE - 1)) == 0)
             {
 
                 try
                 {
-                    bundlesChunks[(int)(bundlesNextPointer >> 27)] = bundlesChannel.map(FileChannel.MapMode.READ_WRITE, bundlesNextPointer, CHUNK_SIZE);
+                    // bundlesChunks[(int)(BundlesNextPointer >> 27)] = bundlesChannel.map(FileChannel.MapMode.READ_WRITE, BundlesNextPointer, CHUNK_SIZE);
+                    bundlesChunks[(int)(BundlesNextPointer >> 27)] = bundlesChannel.CreateViewStream(BundlesNextPointer, CHUNK_SIZE);
                 }
                 catch (IOException e)
                 {

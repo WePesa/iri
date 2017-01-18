@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.MemoryMappedFiles;
+using System.Runtime.CompilerServices;
+using System.Threading;
 using slf4net;
 
 // 1.1.2.3
@@ -18,35 +21,51 @@ namespace com.iota.iri.service.storage
         private static readonly StorageApprovers _instance = new StorageApprovers();
 
 		private const string APPROVERS_FILE_NAME = "approvers.iri";
-		private FileChannel approversChannel;
-		private readonly ByteBuffer[] approversChunks = new ByteBuffer[MAX_NUMBER_OF_CHUNKS];
-		private volatile long approversNextPointer = SUPER_GROUPS_SIZE;
+        private static MemoryMappedFile approversChannel;
+        private static readonly MemoryMappedViewStream[] approversChunks = new MemoryMappedViewStream[MAX_NUMBER_OF_CHUNKS];
+
+        private static long approversNextPointer = SUPER_GROUPS_SIZE;
+
+        internal static long ApproversNextPointer
+        {
+            get
+            {
+                return Interlocked.Read(ref approversNextPointer);
+            }
+            set
+            {
+                Interlocked.Exchange(ref approversNextPointer, value);
+            }
+        }
 
 		public override void init()
 		{
 		    try
 		    {
+                approversChannel = MemoryMappedFile.CreateFromFile(Path.GetFileName(APPROVERS_FILE_NAME), FileMode.OpenOrCreate, "approversMap", SUPER_GROUPS_SIZE);
 
-		        approversChannel = FileChannel.open(Paths.get(APPROVERS_FILE_NAME), StandardOpenOption.CREATE,
-		            StandardOpenOption.READ, StandardOpenOption.WRITE);
+                approversChunks[0] = approversChannel.CreateViewStream(0, SUPER_GROUPS_SIZE);
 
-		        approversChunks[0] = approversChannel.map(FileChannel.MapMode.READ_WRITE, 0, SUPER_GROUPS_SIZE);
-		        long approversChannelSize = approversChannel.size();
+                long approversChannelSize = SUPER_GROUPS_SIZE; // approversChannel.size();
+
+
 		        while (true)
 		        {
 
-		            if ((approversNextPointer & (CHUNK_SIZE - 1)) == 0)
+		            if ((ApproversNextPointer & (CHUNK_SIZE - 1)) == 0)
 		            {
-		                approversChunks[(int) (approversNextPointer >> 27)] =
-		                    approversChannel.map(FileChannel.MapMode.READ_WRITE, approversNextPointer, CHUNK_SIZE);
+                        approversChunks[(int)(ApproversNextPointer >> 27)] =
+                            approversChannel.CreateViewStream(ApproversNextPointer, CHUNK_SIZE);
 		            }
-		            if (approversChannelSize - approversNextPointer > CHUNK_SIZE)
+		            if (approversChannelSize - ApproversNextPointer > CHUNK_SIZE)
 		            {
-		                approversNextPointer += CHUNK_SIZE;
+		                ApproversNextPointer += CHUNK_SIZE;
 		            }
 		            else
 		            {
-		                approversChunks[(int) (approversNextPointer >> 27)].get(mainBuffer);
+		                // approversChunks[(int) (ApproversNextPointer >> 27)].get(mainBuffer);
+                        approversChunks[(int)(ApproversNextPointer >> 27)].Read((byte[])(Array)mainBuffer, 0, mainBuffer.Length);
+
 		                bool empty = true;
 		                foreach (int value in mainBuffer)
 		                {
@@ -61,7 +80,7 @@ namespace com.iota.iri.service.storage
 		                {
 		                    break;
 		                }
-		                approversNextPointer += CELL_SIZE;
+		                ApproversNextPointer += CELL_SIZE;
 		            }
 		        }
 		    }
@@ -81,7 +100,7 @@ namespace com.iota.iri.service.storage
 
 			try
 			{
-				approversChannel.close();
+				approversChannel.Dispose();
 			}
 			catch (Exception e)
 			{
@@ -89,106 +108,128 @@ namespace com.iota.iri.service.storage
 			}
 		}
 
-		public virtual long approveePointer(sbyte[] hash)
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public static long approveePointer(sbyte[] hash)
+        {
+
+            long pointer = ((hash[0] + 128) + ((hash[1] + 128) << 8)) << 11;
+            for (int depth = 2; depth < Transaction.HASH_SIZE; depth++)
+            {
+
+                // ((ByteBuffer)approversChunks[(int)(pointer >> 27)].position((int)(pointer & (CHUNK_SIZE - 1)))).get(mainBuffer);
+                approversChunks[(int)(pointer >> 27)].Position = (int)(pointer & (CHUNK_SIZE - 1));
+                approversChunks[(int)(pointer >> 27)].Read((byte[])(Array)mainBuffer, 0, mainBuffer.Length);
+
+                if (mainBuffer[Transaction.TYPE_OFFSET] == GROUP)
+                {
+
+                    if ((pointer = value(mainBuffer, (hash[depth] + 128) << 3)) == 0)
+                    {
+
+                        return 0;
+                    }
+
+                }
+                else
+                {
+
+                    for (; depth < Transaction.HASH_SIZE; depth++)
+                    {
+
+                        if (mainBuffer[Transaction.HASH_OFFSET + depth] != hash[depth])
+                        {
+
+                            return 0;
+                        }
+                    }
+
+                    return pointer;
+                }
+            }
+
+            throw new InvalidOperationException("Corrupted storage");
+        }
+
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public static IList<long?> approveeTransactions(long pointer)
+        {
+            List<long?> approveeTransactions = new List<long?>();
+
+            if (pointer != 0)
+            {
+
+                // ((ByteBuffer) approversChunks[(int)(pointer >> 27)].position((int)(pointer & (CHUNK_SIZE - 1)))).get(mainBuffer);
+                approversChunks[(int)(pointer >> 27)].Position = (int)(pointer & (CHUNK_SIZE - 1));
+                approversChunks[(int)(pointer >> 27)].Read((byte[])(Array)mainBuffer, 0, mainBuffer.Length);
+
+                int offset = ZEROTH_POINTER_OFFSET - sizeof(long);
+                while (true)
+                {
+
+                    while ((offset += sizeof(long)) < CELL_SIZE - sizeof(long))
+                    {
+
+                        long transactionPointer = value(mainBuffer, offset);
+
+                        if (transactionPointer == 0)
+                        {
+
+                            break;
+
+                        }
+                        else
+                        {
+
+                            approveeTransactions.Add(transactionPointer);
+                        }
+                    }
+                    if (offset == CELL_SIZE - sizeof(long))
+                    {
+
+                        long nextCellPointer = value(mainBuffer, offset);
+
+                        if (nextCellPointer == 0)
+                        {
+
+                            break;
+
+                        }
+                        else
+                        {
+
+                            // ((ByteBuffer) approversChunks[(int)(nextCellPointer >> 27)].position((int)(nextCellPointer & (CHUNK_SIZE - 1)))).get(mainBuffer);
+                            approversChunks[(int)(nextCellPointer >> 27)].Position = (int)(nextCellPointer & (CHUNK_SIZE - 1));
+                            approversChunks[(int)(nextCellPointer >> 27)].Read((byte[])(Array)mainBuffer, 0, mainBuffer.Length);
+
+                            offset = -sizeof(long);
+                        }
+
+                    }
+                    else
+                    {
+
+                        break;
+                    }
+                }
+            }
+
+            return approveeTransactions;
+        }
+
+		private static void appendToApprovers()
 		{
-			lock (typeof(Storage))
-			{
 
-			long pointer = ((hash[0] + 128) + ((hash[1] + 128) << 8)) << 11;
-			for (int depth = 2; depth < Transaction.HASH_SIZE; depth++)
-			{
+			// ((ByteBuffer)approversChunks[(int)(ApproversNextPointer >> 27)].position((int)(ApproversNextPointer & (CHUNK_SIZE - 1)))).put(mainBuffer);
+            approversChunks[(int)(ApproversNextPointer >> 27)].Position = (int)(ApproversNextPointer & (CHUNK_SIZE - 1));
+            approversChunks[(int)(ApproversNextPointer >> 27)].Write((byte[])(Array)mainBuffer, 0, mainBuffer.Length);
 
-				((ByteBuffer)approversChunks[(int)(pointer >> 27)].position((int)(pointer & (CHUNK_SIZE - 1)))).get(mainBuffer);
-
-				if (mainBuffer[Transaction.TYPE_OFFSET] == GROUP)
-				{
-					if ((pointer = value(mainBuffer, (hash[depth] + 128) << 3)) == 0)
-					{
-						return 0;
-					}
-
-				}
-				else
-				{
-
-					for (; depth < Transaction.HASH_SIZE; depth++)
-					{
-						if (mainBuffer[Transaction.HASH_OFFSET + depth] != hash[depth])
-						{
-							return 0;
-						}
-					}
-
-					return pointer;
-				}
-			}
-			}
-			throw new IllegalStateException("Corrupted storage");
-		}
-
-		public virtual IList<long?> approveeTransactions(long pointer)
-		{
-
-			lock (typeof(Storage))
-			{
-			IList<long?> approveeTransactions = new LinkedList<>();
-
-			if (pointer != 0)
-			{
-
-				((ByteBuffer) approversChunks[(int)(pointer >> 27)].position((int)(pointer & (CHUNK_SIZE - 1)))).get(mainBuffer);
-				int offset = ZEROTH_POINTER_OFFSET - long.BYTES;
-				while (true)
-				{
-
-					while ((offset += long.BYTES) < CELL_SIZE - long.BYTES)
-					{
-
-						long transactionPointer = value(mainBuffer, offset);
-						if (transactionPointer == 0)
-						{
-							break;
-						}
-						else
-						{
-							approveeTransactions.Add(transactionPointer);
-						}
-					}
-					if (offset == CELL_SIZE - long.BYTES)
-					{
-
-						long nextCellPointer = value(mainBuffer, offset);
-						if (nextCellPointer == 0)
-						{
-							break;
-						}
-						else
-						{
-							((ByteBuffer) approversChunks[(int)(nextCellPointer >> 27)].position((int)(nextCellPointer & (CHUNK_SIZE - 1)))).get(mainBuffer);
-							offset = -long.BYTES;
-						}
-					}
-					else
-					{
-						break;
-					}
-				}
-			}
-
-			return approveeTransactions;
-			}
-		}
-
-		private void appendToApprovers()
-		{
-
-			((ByteBuffer)approversChunks[(int)(approversNextPointer >> 27)].position((int)(approversNextPointer & (CHUNK_SIZE - 1)))).put(mainBuffer);
-			if (((approversNextPointer += CELL_SIZE) & (CHUNK_SIZE - 1)) == 0)
+			if (((ApproversNextPointer += CELL_SIZE) & (CHUNK_SIZE - 1)) == 0)
 			{
 
 				try
 				{
-					approversChunks[(int)(approversNextPointer >> 27)] = approversChannel.map(FileChannel.MapMode.READ_WRITE, approversNextPointer, CHUNK_SIZE);
+					// approversChunks[(int)(ApproversNextPointer >> 27)] = approversChannel.map(FileChannel.MapMode.READ_WRITE, ApproversNextPointer, CHUNK_SIZE);
+                    approversChunks[(int)(ApproversNextPointer >> 27)] = approversChannel.CreateViewStream(ApproversNextPointer, CHUNK_SIZE);
 				}
 				catch (IOException e)
 				{
@@ -197,113 +238,136 @@ namespace com.iota.iri.service.storage
 			}
 		}
 
-		public virtual void updateApprover(sbyte[] hash, long transactionPointer)
-		{
+        private static void updateApprover(sbyte[] hash, long transactionPointer)
+        {
 
-			long pointer = ((hash[0] + 128) + ((hash[1] + 128) << 8)) << 11, prevPointer = 0;
-			for (int depth = 2; depth < Transaction.HASH_SIZE; depth++)
-			{
+            long pointer = ((hash[0] + 128) + ((hash[1] + 128) << 8)) << 11, prevPointer = 0;
+            for (int depth = 2; depth < Transaction.HASH_SIZE; depth++)
+            {
 
-				((ByteBuffer)approversChunks[(int)(pointer >> 27)].position((int)(pointer & (CHUNK_SIZE - 1)))).get(mainBuffer);
+                // ((ByteBuffer)approversChunks[(int)(pointer >> 27)].position((int)(pointer & (CHUNK_SIZE - 1)))).get(mainBuffer);
+                approversChunks[(int)(pointer >> 27)].Position = (int)(pointer & (CHUNK_SIZE - 1));
+                approversChunks[(int)(pointer >> 27)].Read((byte[])(Array)mainBuffer, 0, mainBuffer.Length);
 
-				if (mainBuffer[Transaction.TYPE_OFFSET] == GROUP)
-				{
+                if (mainBuffer[Transaction.TYPE_OFFSET] == GROUP)
+                {
 
-					prevPointer = pointer;
-					if ((pointer = value(mainBuffer, (hash[depth] + 128) << 3)) == 0)
-					{
+                    prevPointer = pointer;
+                    if ((pointer = value(mainBuffer, (hash[depth] + 128) << 3)) == 0)
+                    {
 
-						setValue(mainBuffer, (hash[depth] + 128) << 3, approversNextPointer);
-						((ByteBuffer)approversChunks[(int)(prevPointer >> 27)].position((int)(prevPointer & (CHUNK_SIZE - 1)))).put(mainBuffer);
+                        setValue(mainBuffer, (hash[depth] + 128) << 3, ApproversNextPointer);
+                        // ((ByteBuffer)approversChunks[(int)(prevPointer >> 27)].position((int)(prevPointer & (CHUNK_SIZE - 1)))).put(mainBuffer);
+                        approversChunks[(int)(prevPointer >> 27)].Position = (int)(prevPointer & (CHUNK_SIZE - 1));
+                        approversChunks[(int)(prevPointer >> 27)].Write((byte[])(Array)mainBuffer, 0, mainBuffer.Length);
 
-						Array.Copy(ZEROED_BUFFER, 0, mainBuffer, 0, CELL_SIZE);
-						mainBuffer[Transaction.TYPE_OFFSET] = FILLED_SLOT;
-						Array.Copy(hash, 0, mainBuffer, 8, Transaction.HASH_SIZE);
-						setValue(mainBuffer, ZEROTH_POINTER_OFFSET, transactionPointer);
-						appendToApprovers();
+                        Array.Copy(ZEROED_BUFFER, 0, mainBuffer, 0, CELL_SIZE);
+                        mainBuffer[Transaction.TYPE_OFFSET] = FILLED_SLOT;
+                        Array.Copy(hash, 0, mainBuffer, 8, Transaction.HASH_SIZE);
+                        setValue(mainBuffer, ZEROTH_POINTER_OFFSET, transactionPointer);
+                        appendToApprovers();
 
-						return;
-					}
+                        return;
+                    }
 
-				}
-				else
-				{
+                }
+                else
+                {
 
-					for (int i = depth; i < Transaction.HASH_SIZE; i++)
-					{
+                    for (int i = depth; i < Transaction.HASH_SIZE; i++)
+                    {
 
-						if (mainBuffer[Transaction.HASH_OFFSET + i] != hash[i])
-						{
+                        if (mainBuffer[Transaction.HASH_OFFSET + i] != hash[i])
+                        {
 
-							int differentHashByte = mainBuffer[Transaction.HASH_OFFSET + i];
+                            int differentHashByte = mainBuffer[Transaction.HASH_OFFSET + i];
 
-							((ByteBuffer)approversChunks[(int)(prevPointer >> 27)].position((int)(prevPointer & (CHUNK_SIZE - 1)))).get(mainBuffer);
-							setValue(mainBuffer, (hash[depth - 1] + 128) << 3, approversNextPointer);
-							((ByteBuffer)approversChunks[(int)(prevPointer >> 27)].position((int)(prevPointer & (CHUNK_SIZE - 1)))).put(mainBuffer);
+                            // ((ByteBuffer)approversChunks[(int)(prevPointer >> 27)].position((int)(prevPointer & (CHUNK_SIZE - 1)))).get(mainBuffer);
+                            approversChunks[(int)(pointer >> 27)].Position = (int)(prevPointer & (CHUNK_SIZE - 1));
+                            approversChunks[(int)(pointer >> 27)].Read((byte[])(Array)mainBuffer, 0, mainBuffer.Length);
 
-							for (int j = depth; j < i; j++)
-							{
+                            setValue(mainBuffer, (hash[depth - 1] + 128) << 3, ApproversNextPointer);
+                            // ((ByteBuffer)approversChunks[(int)(prevPointer >> 27)].position((int)(prevPointer & (CHUNK_SIZE - 1)))).put(mainBuffer);
+                            approversChunks[(int)(prevPointer >> 27)].Position = (int)(prevPointer & (CHUNK_SIZE - 1));
+                            approversChunks[(int)(prevPointer >> 27)].Write((byte[])(Array)mainBuffer, 0, mainBuffer.Length);
 
-								Array.Copy(ZEROED_BUFFER, 0, mainBuffer, 0, CELL_SIZE);
-								setValue(mainBuffer, (hash[j] + 128) << 3, approversNextPointer + CELL_SIZE);
-								appendToApprovers();
-							}
+                            for (int j = depth; j < i; j++)
+                            {
 
-							Array.Copy(ZEROED_BUFFER, 0, mainBuffer, 0, CELL_SIZE);
-							setValue(mainBuffer, (differentHashByte + 128) << 3, pointer);
-							setValue(mainBuffer, (hash[i] + 128) << 3, approversNextPointer + CELL_SIZE);
-							appendToApprovers();
+                                Array.Copy(ZEROED_BUFFER, 0, mainBuffer, 0, CELL_SIZE);
+                                setValue(mainBuffer, (hash[j] + 128) << 3, ApproversNextPointer + CELL_SIZE);
+                                appendToApprovers();
+                            }
 
-							Array.Copy(ZEROED_BUFFER, 0, mainBuffer, 0, CELL_SIZE);
-							mainBuffer[Transaction.TYPE_OFFSET] = FILLED_SLOT;
-							Array.Copy(hash, 0, mainBuffer, 8, Transaction.HASH_SIZE);
-							setValue(mainBuffer, ZEROTH_POINTER_OFFSET, transactionPointer);
-							appendToApprovers();
+                            Array.Copy(ZEROED_BUFFER, 0, mainBuffer, 0, CELL_SIZE);
+                            setValue(mainBuffer, (differentHashByte + 128) << 3, pointer);
+                            setValue(mainBuffer, (hash[i] + 128) << 3, ApproversNextPointer + CELL_SIZE);
+                            appendToApprovers();
 
-							return;
-						}
-					}
+                            Array.Copy(ZEROED_BUFFER, 0, mainBuffer, 0, CELL_SIZE);
+                            mainBuffer[Transaction.TYPE_OFFSET] = FILLED_SLOT;
+                            Array.Copy(hash, 0, mainBuffer, 8, Transaction.HASH_SIZE);
+                            setValue(mainBuffer, ZEROTH_POINTER_OFFSET, transactionPointer);
+                            appendToApprovers();
 
-					int offset = ZEROTH_POINTER_OFFSET;
-					while (true)
-					{
-						while ((offset += long.BYTES) < CELL_SIZE - long.BYTES && value(mainBuffer, offset) != 0)
-						{
-						// Do nothing
-						}
-						if (offset == CELL_SIZE - long.BYTES)
-						{
+                            return;
+                        }
+                    }
 
-							long nextCellPointer = value(mainBuffer, offset);
-							if (nextCellPointer == 0)
-							{
+                    int offset = ZEROTH_POINTER_OFFSET;
+                    while (true)
+                    {
 
-								setValue(mainBuffer, offset, approversNextPointer);
-								((ByteBuffer)approversChunks[(int)(pointer >> 27)].position((int)(pointer & (CHUNK_SIZE - 1)))).put(mainBuffer);
+                        while ((offset += sizeof(long)) < CELL_SIZE - sizeof(long) && value(mainBuffer, offset) != 0)
+                        {
 
-								Array.Copy(ZEROED_BUFFER, 0, mainBuffer, 0, CELL_SIZE);
-								setValue(mainBuffer, 0, transactionPointer);
-								appendToApprovers();
+                            // Do nothing
+                        }
+                        if (offset == CELL_SIZE - sizeof(long))
+                        {
 
-								return;
-							}
-							else
-							{
-								pointer = nextCellPointer;
-								((ByteBuffer)approversChunks[(int)(pointer >> 27)].position((int)(pointer & (CHUNK_SIZE - 1)))).get(mainBuffer);
-								offset = -long.BYTES;
-							}
-						}
-						else
-						{
-							setValue(mainBuffer, offset, transactionPointer);
-							((ByteBuffer)approversChunks[(int)(pointer >> 27)].position((int)(pointer & (CHUNK_SIZE - 1)))).put(mainBuffer);
-							return;
-						}
-					}
-				}
-			}
-		}
+                            long nextCellPointer = value(mainBuffer, offset);
+                            if (nextCellPointer == 0)
+                            {
+
+                                setValue(mainBuffer, offset, ApproversNextPointer);
+                                // ((ByteBuffer)approversChunks[(int)(pointer >> 27)].position((int)(pointer & (CHUNK_SIZE - 1)))).put(mainBuffer);
+                                approversChunks[(int)(pointer >> 27)].Position = (int)(pointer & (CHUNK_SIZE - 1));
+                                approversChunks[(int)(pointer >> 27)].Write((byte[])(Array)mainBuffer, 0, mainBuffer.Length);
+
+                                Array.Copy(ZEROED_BUFFER, 0, mainBuffer, 0, CELL_SIZE);
+                                setValue(mainBuffer, 0, transactionPointer);
+                                appendToApprovers();
+
+                                return;
+
+                            }
+                            else
+                            {
+
+                                pointer = nextCellPointer;
+                                // ((ByteBuffer)approversChunks[(int)(pointer >> 27)].position((int)(pointer & (CHUNK_SIZE - 1)))).get(mainBuffer);
+                                approversChunks[(int)(pointer >> 27)].Position = (int)(pointer & (CHUNK_SIZE - 1));
+                                approversChunks[(int)(pointer >> 27)].Read((byte[])(Array)mainBuffer, 0, mainBuffer.Length);
+
+                                offset = -sizeof(long);
+                            }
+
+                        }
+                        else
+                        {
+
+                            setValue(mainBuffer, offset, transactionPointer);
+                            // ((ByteBuffer)approversChunks[(int)(pointer >> 27)].position((int)(pointer & (CHUNK_SIZE - 1)))).put(mainBuffer);
+                            approversChunks[(int)(pointer >> 27)].Position = (int)(pointer & (CHUNK_SIZE - 1));
+                            approversChunks[(int)(pointer >> 27)].Write((byte[])(Array)mainBuffer, 0, mainBuffer.Length);
+
+                            return;
+                        }
+                    }
+                }
+            }
+        }
 
 		public static StorageApprovers instance()
 		{

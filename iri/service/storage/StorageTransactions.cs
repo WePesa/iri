@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.IO;
+using System.IO.MemoryMappedFiles;
 using slf4net;
 
 // 1.1.2.3.
@@ -8,8 +9,8 @@ namespace com.iota.iri.service.storage
 {
 
 
-    using Logger = org.slf4j.Logger;
-    using LoggerFactory = org.slf4j.LoggerFactory;
+    // using Logger = org.slf4j.Logger;
+    // using LoggerFactory = org.slf4j.LoggerFactory;
 
     using Hash = com.iota.iri.model.Hash;
     using Transaction = com.iota.iri.model.Transaction;
@@ -22,10 +23,10 @@ namespace com.iota.iri.service.storage
         private static readonly StorageTransactions _instance = new StorageTransactions();
         private const string TRANSACTIONS_FILE_NAME = "transactions.iri";
 
-        private FileChannel transactionsChannel;
-        private ByteBuffer transactionsTipsFlags;
+        private MemoryMappedFile transactionsChannel;
+        private MemoryMappedViewStream transactionsTipsFlags;
 
-        private readonly ByteBuffer[] transactionsChunks = new ByteBuffer[MAX_NUMBER_OF_CHUNKS];
+        private readonly MemoryMappedViewStream[] transactionsChunks = new MemoryMappedViewStream[MAX_NUMBER_OF_CHUNKS];
 
         public static long transactionsNextPointer = CELLS_OFFSET - SUPER_GROUPS_OFFSET;
 

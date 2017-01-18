@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.MemoryMappedFiles;
+using System.Runtime.CompilerServices;
+using System.Threading;
 using slf4net;
 
 // 1.1.2.3
@@ -19,36 +22,51 @@ namespace com.iota.iri.service.storage
         private static readonly StorageAddresses _instance = new StorageAddresses();
 		private const string ADDRESSES_FILE_NAME = "addresses.iri";
 
-		private FileChannel addressesChannel;
-		private readonly ByteBuffer[] addressesChunks = new ByteBuffer[MAX_NUMBER_OF_CHUNKS];
-		private volatile long addressesNextPointer = SUPER_GROUPS_SIZE;
+        private MemoryMappedFile addressesChannel;
+        private static readonly MemoryMappedViewStream[] addressesChunks = new MemoryMappedViewStream[MAX_NUMBER_OF_CHUNKS];
+
+        private static long addressesNextPointer = SUPER_GROUPS_SIZE;
+
+        internal static long AddressesNextPointer
+        {
+            get
+            {
+                return Interlocked.Read(ref addressesNextPointer);
+            }
+            set
+            {
+                Interlocked.Exchange(ref addressesNextPointer, value);
+            }
+        }
 
 		public override void init()
 		{
 		    try
 		    {
+                addressesChannel = MemoryMappedFile.CreateFromFile(Path.GetFileName(ADDRESSES_FILE_NAME), FileMode.OpenOrCreate, "addressesMap", SUPER_GROUPS_SIZE);
 
-		        addressesChannel = FileChannel.open(Paths.get(ADDRESSES_FILE_NAME), StandardOpenOption.CREATE,
-		            StandardOpenOption.READ, StandardOpenOption.WRITE);
-		        addressesChunks[0] = addressesChannel.map(FileChannel.MapMode.READ_WRITE, 0, SUPER_GROUPS_SIZE);
-		        long addressesChannelSize = addressesChannel.size();
+                addressesChunks[0] = addressesChannel.CreateViewStream(0, SUPER_GROUPS_SIZE);
+
+                long addressesChannelSize = SUPER_GROUPS_SIZE; // addressesChannel.size();
+
 		        while (true)
 		        {
 
-		            if ((addressesNextPointer & (CHUNK_SIZE - 1)) == 0)
+		            if ((AddressesNextPointer & (CHUNK_SIZE - 1)) == 0)
 		            {
-		                addressesChunks[(int) (addressesNextPointer >> 27)] =
-		                    addressesChannel.map(FileChannel.MapMode.READ_WRITE, addressesNextPointer, CHUNK_SIZE);
+                        addressesChunks[(int)(AddressesNextPointer >> 27)] =
+                            addressesChannel.CreateViewStream(AddressesNextPointer, CHUNK_SIZE);
 		            }
 
-		            if (addressesChannelSize - addressesNextPointer > CHUNK_SIZE)
+		            if (addressesChannelSize - AddressesNextPointer > CHUNK_SIZE)
 		            {
-		                addressesNextPointer += CHUNK_SIZE;
+		                AddressesNextPointer += CHUNK_SIZE;
 		            }
 		            else
 		            {
 
-		                addressesChunks[(int) (addressesNextPointer >> 27)].get(mainBuffer);
+                        addressesChunks[(int)(AddressesNextPointer >> 27)].Read((byte[])(Array)mainBuffer, 0, mainBuffer.Length);
+
 		                bool empty = true;
 		                foreach (int value in mainBuffer)
 		                {
@@ -63,7 +81,7 @@ namespace com.iota.iri.service.storage
 		                {
 		                    break;
 		                }
-		                addressesNextPointer += CELL_SIZE;
+		                AddressesNextPointer += CELL_SIZE;
 		            }
 		        }
 
@@ -84,7 +102,7 @@ namespace com.iota.iri.service.storage
 			}
 			try
 			{
-				addressesChannel.close();
+				addressesChannel.Dispose();
 			}
 			catch (IOException e)
 			{
@@ -92,91 +110,105 @@ namespace com.iota.iri.service.storage
 			}
 		}
 
-		public virtual long addressPointer(sbyte[] hash)
-		{
-			lock (typeof(Storage))
-			{
-			long pointer = ((hash[0] + 128) + ((hash[1] + 128) << 8)) << 11;
-			for (int depth = 2; depth < Transaction.ADDRESS_SIZE; depth++)
-			{
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public static long addressPointer(sbyte[] hash)
+        {
 
-				((ByteBuffer)addressesChunks[(int)(pointer >> 27)].position((int)(pointer & (CHUNK_SIZE - 1)))).get(mainBuffer);
-				if (mainBuffer[Transaction.TYPE_OFFSET] == GROUP)
-				{
-					if ((pointer = value(mainBuffer, (hash[depth] + 128) << 3)) == 0)
-					{
-						return 0;
-					}
-				}
-				else
-				{
+            long pointer = ((hash[0] + 128) + ((hash[1] + 128) << 8)) << 11;
+            for (int depth = 2; depth < Transaction.ADDRESS_SIZE; depth++)
+            {
 
-					for (; depth < Transaction.ADDRESS_SIZE; depth++)
-					{
-						if (mainBuffer[Transaction.HASH_OFFSET + depth] != hash[depth])
-						{
-							return 0;
-						}
-					}
-					return pointer;
-				}
-			}
-			}
-			throw new IllegalStateException("Corrupted storage");
-		}
+                // ((ByteBuffer)addressesChunks[(int)(pointer >> 27)].position((int)(pointer & (CHUNK_SIZE - 1)))).get(mainBuffer);
+                addressesChunks[(int)(pointer >> 27)].Position = (int)(pointer & (CHUNK_SIZE - 1));
+                addressesChunks[(int)(pointer >> 27)].Read((byte[])(Array)mainBuffer, 0, mainBuffer.Length);
 
-		public virtual IList<long?> addressTransactions(long pointer)
-		{
+                if (mainBuffer[Transaction.TYPE_OFFSET] == GROUP)
+                {
 
-			lock (typeof(Storage))
-			{
-			IList<long?> addressTransactions = new LinkedList<>();
+                    if ((pointer = value(mainBuffer, (hash[depth] + 128) << 3)) == 0)
+                    {
 
-			if (pointer != 0)
-			{
+                        return 0;
+                    }
 
-				((ByteBuffer) addressesChunks[(int)(pointer >> 27)].position((int)(pointer & (CHUNK_SIZE - 1)))).get(mainBuffer);
-				int offset = ZEROTH_POINTER_OFFSET - long.BYTES;
-				while (true)
-				{
+                }
+                else
+                {
 
-					while ((offset += long.BYTES) < CELL_SIZE - long.BYTES)
-					{
+                    for (; depth < Transaction.ADDRESS_SIZE; depth++)
+                    {
 
-						long transactionPointer = value(mainBuffer, offset);
-						if (transactionPointer == 0)
-						{
-							break;
-						}
-						else
-						{
-							addressTransactions.Add(transactionPointer);
-						}
-					}
-					if (offset == CELL_SIZE - long.BYTES)
-					{
+                        if (mainBuffer[Transaction.HASH_OFFSET + depth] != hash[depth])
+                        {
 
-						long nextCellPointer = value(mainBuffer, offset);
-						if (nextCellPointer == 0)
-						{
-							break;
-						}
-						else
-						{
-							((ByteBuffer) addressesChunks[(int)(nextCellPointer >> 27)].position((int)(nextCellPointer & (CHUNK_SIZE - 1)))).get(mainBuffer);
-							offset = -long.BYTES;
-						}
-					}
-					else
-					{
-						break;
-					}
-				}
-			}
+                            return 0;
+                        }
+                    }
 
-			return addressTransactions;
-			}
-		}
+                    return pointer;
+                }
+            }
+
+            throw new InvalidOperationException("Corrupted storage");
+        }
+
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public static IList<long?> addressTransactions(long pointer)
+        {
+
+            List<long?> addressTransactions = new List<long?>();
+
+            if (pointer != 0)
+            {
+
+                // ((ByteBuffer) addressesChunks[(int)(pointer >> 27)].position((int)(pointer & (CHUNK_SIZE - 1)))).get(mainBuffer);
+                addressesChunks[(int)(pointer >> 27)].Position = (int)(pointer & (CHUNK_SIZE - 1));
+                addressesChunks[(int)(pointer >> 27)].Read((byte[])(Array)mainBuffer, 0, mainBuffer.Length);
+
+                int offset = ZEROTH_POINTER_OFFSET - sizeof(long);
+                while (true)
+                {
+
+                    while ((offset += sizeof(long)) < CELL_SIZE - sizeof(long))
+                    {
+
+                        long transactionPointer = value(mainBuffer, offset);
+                        if (transactionPointer == 0)
+                        {
+                            break;
+                        }
+                        else
+                        {
+                            addressTransactions.Add(transactionPointer);
+                        }
+                    }
+                    if (offset == CELL_SIZE - sizeof(long))
+                    {
+
+                        long nextCellPointer = value(mainBuffer, offset);
+                        if (nextCellPointer == 0)
+                        {
+                            break;
+                        }
+                        else
+                        {
+                            // ((ByteBuffer) addressesChunks[(int)(nextCellPointer >> 27)].position((int)(nextCellPointer & (CHUNK_SIZE - 1)))).get(mainBuffer);
+                            addressesChunks[(int)(nextCellPointer >> 27)].Position = (int)(nextCellPointer & (CHUNK_SIZE - 1));
+                            addressesChunks[(int)(nextCellPointer >> 27)].Read((byte[])(Array)mainBuffer, 0, mainBuffer.Length);
+
+                            offset = -sizeof(long);
+                        }
+
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+            }
+
+            return addressTransactions;
+        }
 
 		public virtual void updateAddresses(long transactionPointer, Transaction transaction)
 		{
@@ -185,7 +217,9 @@ namespace com.iota.iri.service.storage
 				for (int depth = 2; depth < Transaction.ADDRESS_SIZE; depth++)
 				{
 
-					((ByteBuffer)addressesChunks[(int)(pointer >> 27)].position((int)(pointer & (CHUNK_SIZE - 1)))).get(mainBuffer);
+					// ((ByteBuffer)addressesChunks[(int)(pointer >> 27)].position((int)(pointer & (CHUNK_SIZE - 1)))).get(mainBuffer);
+                    addressesChunks[(int)(pointer >> 27)].Position = (int)(pointer & (CHUNK_SIZE - 1));
+				    addressesChunks[(int) (pointer >> 27)].Read((byte[]) (Array) mainBuffer, 0, mainBuffer.Length);
 
 					if (mainBuffer[Transaction.TYPE_OFFSET] == GROUP)
 					{
@@ -194,8 +228,10 @@ namespace com.iota.iri.service.storage
 						if ((pointer = value(mainBuffer, (transaction.address[depth] + 128) << 3)) == 0)
 						{
 
-							setValue(mainBuffer, (transaction.address[depth] + 128) << 3, addressesNextPointer);
-							((ByteBuffer)addressesChunks[(int)(prevPointer >> 27)].position((int)(prevPointer & (CHUNK_SIZE - 1)))).put(mainBuffer);
+							setValue(mainBuffer, (transaction.address[depth] + 128) << 3, AddressesNextPointer);
+							// ((ByteBuffer)addressesChunks[(int)(prevPointer >> 27)].position((int)(prevPointer & (CHUNK_SIZE - 1)))).put(mainBuffer);
+                            addressesChunks[(int)(prevPointer >> 27)].Position = (int)(prevPointer & (CHUNK_SIZE - 1));
+                            addressesChunks[(int)(prevPointer >> 27)].Write((byte[])(Array)mainBuffer, 0, mainBuffer.Length);
 
 							Array.Copy(ZEROED_BUFFER, 0, mainBuffer, 0, CELL_SIZE);
 							mainBuffer[Transaction.TYPE_OFFSET] = FILLED_SLOT;
@@ -220,21 +256,25 @@ namespace com.iota.iri.service.storage
 
 								int differentHashByte = mainBuffer[Transaction.HASH_OFFSET + i];
 
-								((ByteBuffer)addressesChunks[(int)(prevPointer >> 27)].position((int)(prevPointer & (CHUNK_SIZE - 1)))).get(mainBuffer);
-								setValue(mainBuffer, (transaction.address[depth - 1] + 128) << 3, addressesNextPointer);
-								((ByteBuffer)addressesChunks[(int)(prevPointer >> 27)].position((int)(prevPointer & (CHUNK_SIZE - 1)))).put(mainBuffer);
+								// ((ByteBuffer)addressesChunks[(int)(prevPointer >> 27)].position((int)(prevPointer & (CHUNK_SIZE - 1)))).get(mainBuffer);
+                                addressesChunks[(int)(pointer >> 27)].Position = (int)(prevPointer & (CHUNK_SIZE - 1));
+                                addressesChunks[(int)(pointer >> 27)].Read((byte[])(Array)mainBuffer, 0, mainBuffer.Length); 
+								setValue(mainBuffer, (transaction.address[depth - 1] + 128) << 3, AddressesNextPointer);
+								// ((ByteBuffer)addressesChunks[(int)(prevPointer >> 27)].position((int)(prevPointer & (CHUNK_SIZE - 1)))).put(mainBuffer);
+                                addressesChunks[(int)(prevPointer >> 27)].Position = (int)(prevPointer & (CHUNK_SIZE - 1));
+                                addressesChunks[(int)(prevPointer >> 27)].Write((byte[])(Array)mainBuffer, 0, mainBuffer.Length);
 
 								for (int j = depth; j < i; j++)
 								{
 
 									Array.Copy(ZEROED_BUFFER, 0, mainBuffer, 0, CELL_SIZE);
-									setValue(mainBuffer, (transaction.address[j] + 128) << 3, addressesNextPointer + CELL_SIZE);
+									setValue(mainBuffer, (transaction.address[j] + 128) << 3, AddressesNextPointer + CELL_SIZE);
 									appendToAddresses();
 								}
 
 								Array.Copy(ZEROED_BUFFER, 0, mainBuffer, 0, CELL_SIZE);
 								setValue(mainBuffer, (differentHashByte + 128) << 3, pointer);
-								setValue(mainBuffer, (transaction.address[i] + 128) << 3, addressesNextPointer + CELL_SIZE);
+								setValue(mainBuffer, (transaction.address[i] + 128) << 3, AddressesNextPointer + CELL_SIZE);
 								appendToAddresses();
 
 								Array.Copy(ZEROED_BUFFER, 0, mainBuffer, 0, CELL_SIZE);
@@ -256,20 +296,22 @@ namespace com.iota.iri.service.storage
 							while (true)
 							{
 
-								while ((offset += long.BYTES) < CELL_SIZE - long.BYTES && value(mainBuffer, offset) != 0)
+                                while ((offset += sizeof(long)) < CELL_SIZE - sizeof(long) && value(mainBuffer, offset) != 0)
 								{
 
 								// Do nothing
 								}
-								if (offset == CELL_SIZE - long.BYTES)
+                                if (offset == CELL_SIZE - sizeof(long))
 								{
 
 									long nextCellPointer = value(mainBuffer, offset);
 									if (nextCellPointer == 0)
 									{
 
-										setValue(mainBuffer, offset, addressesNextPointer);
-										((ByteBuffer)addressesChunks[(int)(pointer >> 27)].position((int)(pointer & (CHUNK_SIZE - 1)))).put(mainBuffer);
+										setValue(mainBuffer, offset, AddressesNextPointer);
+										// ((ByteBuffer)addressesChunks[(int)(pointer >> 27)].position((int)(pointer & (CHUNK_SIZE - 1)))).put(mainBuffer);
+                                        addressesChunks[(int)(pointer >> 27)].Position = (int)(pointer & (CHUNK_SIZE - 1));
+                                        addressesChunks[(int)(pointer >> 27)].Write((byte[])(Array)mainBuffer, 0, mainBuffer.Length);
 
 										Array.Copy(ZEROED_BUFFER, 0, mainBuffer, 0, CELL_SIZE);
 										setValue(mainBuffer, 0, transactionPointer);
@@ -280,14 +322,18 @@ namespace com.iota.iri.service.storage
 									else
 									{
 										pointer = nextCellPointer;
-										((ByteBuffer)addressesChunks[(int)(pointer >> 27)].position((int)(pointer & (CHUNK_SIZE - 1)))).get(mainBuffer);
-										offset = -long.BYTES;
+										// ((ByteBuffer)addressesChunks[(int)(pointer >> 27)].position((int)(pointer & (CHUNK_SIZE - 1)))).get(mainBuffer);
+                                        addressesChunks[(int)(pointer >> 27)].Position = (int)(pointer & (CHUNK_SIZE - 1));
+                                        addressesChunks[(int)(pointer >> 27)].Read((byte[])(Array)mainBuffer, 0, mainBuffer.Length); 
+                                        offset = -sizeof(long);
 									}
 								}
 								else
 								{
 									setValue(mainBuffer, offset, transactionPointer);
-									((ByteBuffer)addressesChunks[(int)(pointer >> 27)].position((int)(pointer & (CHUNK_SIZE - 1)))).put(mainBuffer);
+									// ((ByteBuffer)addressesChunks[(int)(pointer >> 27)].position((int)(pointer & (CHUNK_SIZE - 1)))).put(mainBuffer);
+                                    addressesChunks[(int)(pointer >> 27)].Position = (int)(pointer & (CHUNK_SIZE - 1));
+                                    addressesChunks[(int)(pointer >> 27)].Write((byte[])(Array)mainBuffer, 0, mainBuffer.Length);
 									break;
 								}
 							}
@@ -301,13 +347,17 @@ namespace com.iota.iri.service.storage
 		private void appendToAddresses()
 		{
 
-			((ByteBuffer)addressesChunks[(int)(addressesNextPointer >> 27)].position((int)(addressesNextPointer & (CHUNK_SIZE - 1)))).put(mainBuffer);
-			if (((addressesNextPointer += CELL_SIZE) & (CHUNK_SIZE - 1)) == 0)
+			// ((ByteBuffer)addressesChunks[(int)(AddressesNextPointer >> 27)].position((int)(AddressesNextPointer & (CHUNK_SIZE - 1)))).put(mainBuffer);
+            addressesChunks[(int)(AddressesNextPointer >> 27)].Position = (int)(AddressesNextPointer & (CHUNK_SIZE - 1));
+            addressesChunks[(int)(AddressesNextPointer >> 27)].Write((byte[])(Array)mainBuffer, 0, mainBuffer.Length);
+
+			if (((AddressesNextPointer += CELL_SIZE) & (CHUNK_SIZE - 1)) == 0)
 			{
 
 				try
 				{
-					addressesChunks[(int)(addressesNextPointer >> 27)] = addressesChannel.map(FileChannel.MapMode.READ_WRITE, addressesNextPointer, CHUNK_SIZE);
+					// addressesChunks[(int)(AddressesNextPointer >> 27)] = addressesChannel.map(FileChannel.MapMode.READ_WRITE, AddressesNextPointer, CHUNK_SIZE);
+                    addressesChunks[(int)(AddressesNextPointer >> 27)] = addressesChannel.CreateViewStream(AddressesNextPointer, CHUNK_SIZE);
 				}
 				catch (IOException e)
 				{
@@ -324,7 +374,7 @@ namespace com.iota.iri.service.storage
 
 		public virtual IList<long?> addressesOf(Hash hash)
 		{
-			return addressTransactions(addressPointer(hash.bytes()));
+			return addressTransactions(addressPointer(hash.Sbytes()));
 		}
 	}
 

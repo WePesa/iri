@@ -1,15 +1,18 @@
 using System;
 using System.Collections.Generic;
-// 1.1.2.3
+
 using System.IO;
+using System.IO.MemoryMappedFiles;
 using slf4net;
+
+// 1.1.2.3
 
 namespace com.iota.iri.service.storage
 {
 
 
-	using Logger = org.slf4j.Logger;
-	using LoggerFactory = org.slf4j.LoggerFactory;
+	// using Logger = org.slf4j.Logger;
+	// using LoggerFactory = org.slf4j.LoggerFactory;
 
 	using Milestone = com.iota.iri.Milestone;
 	using Hash = com.iota.iri.model.Hash;
@@ -18,13 +21,13 @@ namespace com.iota.iri.service.storage
 	public class StorageScratchpad : AbstractStorage
 	{
 
-		private static readonly ILogger log = LoggerFactory.getLogger(typeof(StorageScratchpad));
+		private static readonly ILogger log = LoggerFactory.GetLogger(typeof(StorageScratchpad));
 
         private static readonly StorageScratchpad _instance = new StorageScratchpad();
 		private const string SCRATCHPAD_FILE_NAME = "scratchpad.iri";
 
-		private ByteBuffer transactionsToRequest;
-		private ByteBuffer analyzedTransactionsFlags, analyzedTransactionsFlagsCopy;
+        private MemoryMappedViewStream transactionsToRequest;
+        private MemoryMappedViewStream analyzedTransactionsFlags, analyzedTransactionsFlagsCopy;
 
 		private readonly sbyte[] transactionToRequest = new sbyte[Transaction.HASH_SIZE];
 		private readonly object transactionToRequestMonitor = new object();
@@ -58,7 +61,7 @@ namespace com.iota.iri.service.storage
 		{
 			try
 			{
-				scratchpadChannel.close();
+				scratchpadChannel.Dispose();
 			}
 			catch (Exception e)
 			{

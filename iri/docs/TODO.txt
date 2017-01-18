@@ -17,6 +17,8 @@ HIGH:
 
 6. File Position - ok
 
+7. make sure that redundents are not eliminated from the executable. ("else" storageBundle.cs line:327)
+
 
 MEDIUM:
 
@@ -67,6 +69,8 @@ LOW:
     no jre here - maybe later I will change it to .Net framework stuff.
 
 9. is ThradLocalRandom is random for each Thread?
+
+10. make sure all e.ToString replaced with log
 
 
 GITHUB:
