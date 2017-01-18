@@ -17,7 +17,7 @@ HIGH:
 
 6. File Position - ok
 
-7. make sure that redundents are not eliminated from the executable. ("else" storageBundle.cs line:327)
+7. make sure that redundents are not eliminated from the executable. ("else" storageBundle.cs line:327) (storagetags line: 185)
 
 
 MEDIUM:

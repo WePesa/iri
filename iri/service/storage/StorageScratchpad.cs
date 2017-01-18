@@ -3,6 +3,7 @@ using System.Collections.Generic;
 
 using System.IO;
 using System.IO.MemoryMappedFiles;
+using iri.utils;
 using slf4net;
 
 // 1.1.2.3
@@ -27,7 +28,7 @@ namespace com.iota.iri.service.storage
 		private const string SCRATCHPAD_FILE_NAME = "scratchpad.iri";
 
         private MemoryMappedViewStream transactionsToRequest;
-        private MemoryMappedViewStream analyzedTransactionsFlags, analyzedTransactionsFlagsCopy;
+        private static MemoryMappedViewStream analyzedTransactionsFlags, analyzedTransactionsFlagsCopy;
 
 		private readonly sbyte[] transactionToRequest = new sbyte[Transaction.HASH_SIZE];
 		private readonly object transactionToRequestMonitor = new object();
@@ -35,21 +36,17 @@ namespace com.iota.iri.service.storage
 
 		public volatile int numberOfTransactionsToRequest;
 
-		private FileChannel scratchpadChannel = null;
+        private MemoryMappedFile scratchpadChannel = null;
 
 
 		public override void init()
 		{
 		    try
 		    {
-		        scratchpadChannel = FileChannel.open(Paths.get(SCRATCHPAD_FILE_NAME), StandardOpenOption.CREATE,
-		            StandardOpenOption.READ, StandardOpenOption.WRITE);
-		        transactionsToRequest = scratchpadChannel.map(FileChannel.MapMode.READ_WRITE, TRANSACTIONS_TO_REQUEST_OFFSET,
-		            TRANSACTIONS_TO_REQUEST_SIZE);
-		        analyzedTransactionsFlags = scratchpadChannel.map(FileChannel.MapMode.READ_WRITE,
-		            ANALYZED_TRANSACTIONS_FLAGS_OFFSET, ANALYZED_TRANSACTIONS_FLAGS_SIZE);
-		        analyzedTransactionsFlagsCopy = scratchpadChannel.map(FileChannel.MapMode.READ_WRITE,
-		            ANALYZED_TRANSACTIONS_FLAGS_COPY_OFFSET, ANALYZED_TRANSACTIONS_FLAGS_COPY_SIZE);
+                MemoryMappedFile scratchpadChannel = MemoryMappedFile.CreateFromFile(Path.GetFileName(SCRATCHPAD_FILE_NAME), FileMode.OpenOrCreate, "scratchpadMap", TRANSACTIONS_TO_REQUEST_SIZE + ANALYZED_TRANSACTIONS_FLAGS_SIZE + ANALYZED_TRANSACTIONS_FLAGS_COPY_SIZE);
+                transactionsToRequest = scratchpadChannel.CreateViewStream(TRANSACTIONS_TO_REQUEST_OFFSET, TRANSACTIONS_TO_REQUEST_SIZE);
+                analyzedTransactionsFlags = scratchpadChannel.CreateViewStream(ANALYZED_TRANSACTIONS_FLAGS_OFFSET, ANALYZED_TRANSACTIONS_FLAGS_SIZE);
+                analyzedTransactionsFlagsCopy = scratchpadChannel.CreateViewStream(ANALYZED_TRANSACTIONS_FLAGS_COPY_OFFSET, ANALYZED_TRANSACTIONS_FLAGS_COPY_SIZE);
 		    }
 		    catch
 		    {
@@ -69,7 +66,7 @@ namespace com.iota.iri.service.storage
 			}
 		}
 
-		public virtual void transactionToRequest(sbyte[] buffer, int offset)
+		public virtual void TransactionToRequest(sbyte[] buffer, int offset)
 		{
 
 			lock (transactionToRequestMonitor)
@@ -78,101 +75,125 @@ namespace com.iota.iri.service.storage
 				if (numberOfTransactionsToRequest == 0)
 				{
 
-					long beginningTime = System.currentTimeMillis();
+					long beginningTime = DateTimeExtensions.currentTimeMillis();
 
 					lock (analyzedTransactionsFlags)
 					{
 
 						clearAnalyzedTransactionsFlags();
 
-						LinkedList<long?> nonAnalyzedTransactions = new LinkedList<>(Collections.singleton(StorageTransactions.instance().transactionPointer(Milestone.latestMilestone.bytes())));
+                        List<long?> nonAnalyzedTransactions = new List<long?> { StorageTransactions.instance().transactionPointer(Milestone.latestMilestone.Sbytes()) };
 
 						long? pointer;
-						while ((pointer = nonAnalyzedTransactions.RemoveFirst()) != null)
+                        while ((pointer = nonAnalyzedTransactions.Poll()) != null)
 						{
 
-							if (AnalyzedTransactionFlag = pointer)
+							if (setAnalyzedTransactionFlag((long)pointer))
 							{
 
-								Transaction transaction = StorageTransactions.instance().loadTransaction(pointer);
+								Transaction transaction = StorageTransactions.instance().loadTransaction((long)pointer);
 								if (transaction.type == Storage.PREFILLED_SLOT)
 								{
 
-									((ByteBuffer) transactionsToRequest.position(numberOfTransactionsToRequest++ * Transaction.HASH_SIZE)).put(transaction.hash); // Only 2'917'776 hashes can be stored this way without overflowing the buffer, we assume that nodes will never need to store that many hashes, so we don't need to cap "numberOfTransactionsToRequest"
+									// ((ByteBuffer) transactionsToRequest.position(numberOfTransactionsToRequest++ * Transaction.HASH_SIZE)).put(transaction.hash); // Only 2'917'776 hashes can be stored this way without overflowing the buffer, we assume that nodes will never need to store that many hashes, so we don't need to cap "numberOfTransactionsToRequest"
+                                    transactionsToRequest.Position = numberOfTransactionsToRequest++ * Transaction.HASH_SIZE; // Only 2'917'776 hashes can be stored this way without overflowing the buffer, we assume that nodes will never need to store that many hashes, so we don't need to cap "numberOfTransactionsToRequest"
+                                    transactionsToRequest.Write((byte[])(Array)transaction.hash, 0, transaction.hash.Length);
 								}
 								else
 								{
-									nonAnalyzedTransactions.AddLast(transaction.trunkTransactionPointer);
-									nonAnalyzedTransactions.AddLast(transaction.branchTransactionPointer);
+									nonAnalyzedTransactions.Add(transaction.trunkTransactionPointer);
+									nonAnalyzedTransactions.Add(transaction.branchTransactionPointer);
 								}
 							}
 						}
 					}
 
-					long transactionsNextPointer = StorageTransactions.transactionsNextPointer;
-					log.Info("Transactions to request = {}", numberOfTransactionsToRequest + " / " + (transactionsNextPointer - (CELLS_OFFSET - SUPER_GROUPS_OFFSET)) / CELL_SIZE + " (" + (System.currentTimeMillis() - beginningTime) + " ms / " + (numberOfTransactionsToRequest == 0 ? 0 : (previousNumberOfTransactions == 0 ? 0 : (((transactionsNextPointer - (CELLS_OFFSET - SUPER_GROUPS_OFFSET)) / CELL_SIZE - previousNumberOfTransactions) * 100) / numberOfTransactionsToRequest)) + "%)");
+                    long transactionsNextPointer = StorageTransactions.TransactionsNextPointer;
+                    log.Info("Transactions to request = {0}", numberOfTransactionsToRequest + " / " + (transactionsNextPointer - (CELLS_OFFSET - SUPER_GROUPS_OFFSET)) / CELL_SIZE + " (" + (DateTimeExtensions.currentTimeMillis() - beginningTime) + " ms / " + (numberOfTransactionsToRequest == 0 ? 0 : (previousNumberOfTransactions == 0 ? 0 : (((transactionsNextPointer - (CELLS_OFFSET - SUPER_GROUPS_OFFSET)) / CELL_SIZE - previousNumberOfTransactions) * 100) / numberOfTransactionsToRequest)) + "%)");
 					previousNumberOfTransactions = (int)((transactionsNextPointer - (CELLS_OFFSET - SUPER_GROUPS_OFFSET)) / CELL_SIZE);
 				}
 
 				if (numberOfTransactionsToRequest == 0)
 				{
-					Array.Copy(Hash.NULL_HASH.bytes(), 0, buffer, offset, Transaction.HASH_SIZE);
+					Array.Copy(Hash.NULL_HASH.Sbytes(), 0, buffer, offset, Transaction.HASH_SIZE);
 				}
 				else
 				{
-					((ByteBuffer) transactionsToRequest.position(--numberOfTransactionsToRequest * Transaction.HASH_SIZE)).get(transactionToRequest);
+					// ((ByteBuffer) transactionsToRequest.position(--numberOfTransactionsToRequest * Transaction.HASH_SIZE)).get(transactionToRequest);
+                    transactionsToRequest.Position = --numberOfTransactionsToRequest * Transaction.HASH_SIZE;
+                    transactionsToRequest.Read((byte[])(Array)transactionToRequest, 0, transactionToRequest.Length);
+
 					Array.Copy(transactionToRequest, 0, buffer, offset, Transaction.HASH_SIZE);
 				}
 			}
 		}
 
-		public virtual void clearAnalyzedTransactionsFlags()
-		{
-			analyzedTransactionsFlags.position(0);
-			for (int i = 0; i < ANALYZED_TRANSACTIONS_FLAGS_SIZE / CELL_SIZE; i++)
-			{
-				analyzedTransactionsFlags.put(ZEROED_BUFFER);
-			}
-		}
+        public static void clearAnalyzedTransactionsFlags()
+        {
+            analyzedTransactionsFlags.Position = 0;
 
-		public virtual bool analyzedTransactionFlag(long pointer)
-		{
-			pointer -= CELLS_OFFSET - SUPER_GROUPS_OFFSET;
-			return (analyzedTransactionsFlags.get((int)(pointer >> (11 + 3))) & (1 << ((pointer >> 11) & 7))) != 0;
-		}
+            for (int i = 0; i < ANALYZED_TRANSACTIONS_FLAGS_SIZE / CELL_SIZE; i++)
+            {
+                analyzedTransactionsFlags.Write((byte[])(Array)ZEROED_BUFFER, 0, ZEROED_BUFFER.Length);
+            }
+        }
 
-		public virtual bool AnalyzedTransactionFlag
-		{
-			set
-			{
+        public static bool analyzedTransactionFlag(long pointer)
+        {
+
+            pointer -= CELLS_OFFSET - SUPER_GROUPS_OFFSET;
+
+            // return (analyzedTransactionsFlags.get((int)(pointer >> (11 + 3))) & (1 << ((pointer >> 11) & 7))) != 0;
+
+            sbyte[] sbyteArray = new sbyte[1];
+            analyzedTransactionsFlags.Read((byte[])(Array)sbyteArray, (int)(pointer >> (11 + 3)), 1);
+            long result = BitConverter.ToInt64((byte[])(Array)sbyteArray, 0);
+            result &= (1 << ((int)(pointer >> 11) & 7));
+            return result != 0;
+
+        }
+
+        //public virtual bool AnalyzedTransactionFlag
+        //{
+        //    set
+        //    {
 	
-				value -= CELLS_OFFSET - SUPER_GROUPS_OFFSET;
+        //        value -= CELLS_OFFSET - SUPER_GROUPS_OFFSET;
 	
-				int value = analyzedTransactionsFlags.get((int)(value >> (11 + 3)));
-				if ((value & (1 << ((value >> 11) & 7))) == 0)
-				{
-					analyzedTransactionsFlags.put((int)(value >> (11 + 3)), (sbyte)(value | (1 << ((value >> 11) & 7))));
-					return true;
-				}
-				return false;
-			}
-		}
+        //        int value = analyzedTransactionsFlags.get((int)(value >> (11 + 3)));
+        //        if ((value & (1 << ((value >> 11) & 7))) == 0)
+        //        {
+        //            analyzedTransactionsFlags.put((int)(value >> (11 + 3)), (sbyte)(value | (1 << ((value >> 11) & 7))));
+        //            return true;
+        //        }
+        //        return false;
+        //    }
+        //}
 
-		public virtual void saveAnalyzedTransactionsFlags()
-		{
-			analyzedTransactionsFlags.position(0);
-			analyzedTransactionsFlagsCopy.position(0);
-			analyzedTransactionsFlagsCopy.put(analyzedTransactionsFlags);
-		}
+        public static void saveAnalyzedTransactionsFlags()
+        {
+            //analyzedTransactionsFlags.position(0);
+            //analyzedTransactionsFlagsCopy.position(0);
+            //analyzedTransactionsFlagsCopy.put(analyzedTransactionsFlags);
 
-		public virtual void loadAnalyzedTransactionsFlags()
-		{
-			analyzedTransactionsFlagsCopy.position(0);
-			analyzedTransactionsFlags.position(0);
-			analyzedTransactionsFlags.put(analyzedTransactionsFlagsCopy);
-		}
+            analyzedTransactionsFlags.Position = 0;
+            analyzedTransactionsFlagsCopy.Position = 0;
+            analyzedTransactionsFlags.CopyTo(analyzedTransactionsFlagsCopy);
+        }
 
-		public virtual ByteBuffer AnalyzedTransactionsFlags
+        public static void loadAnalyzedTransactionsFlags()
+        {
+
+            //analyzedTransactionsFlagsCopy.position(0);
+            //analyzedTransactionsFlags.position(0);
+            //analyzedTransactionsFlags.put(analyzedTransactionsFlagsCopy);
+
+            analyzedTransactionsFlagsCopy.Position = 0;
+            analyzedTransactionsFlags.Position = 0;
+            analyzedTransactionsFlagsCopy.CopyTo(analyzedTransactionsFlags);
+        }
+
+        public virtual MemoryMappedViewStream AnalyzedTransactionsFlags
 		{
 			get
 			{
@@ -180,7 +201,7 @@ namespace com.iota.iri.service.storage
 			}
 		}
 
-		public virtual ByteBuffer AnalyzedTransactionsFlagsCopy
+        public virtual MemoryMappedViewStream AnalyzedTransactionsFlagsCopy
 		{
 			get
 			{
