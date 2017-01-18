@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using iri.utils;
 
@@ -31,8 +32,8 @@ namespace com.iota.iri
 		public static int latestMilestoneIndex = MILESTONE_START_INDEX;
 		public static int latestSolidSubtangleMilestoneIndex = MILESTONE_START_INDEX;
 
-		private static readonly Set<long?> analyzedMilestoneCandidates = new HashSet<>();
-		private static readonly IDictionary<int?, Hash> milestones = new ConcurrentHashMap<>();
+		private static readonly HashSet<long?> analyzedMilestoneCandidates = new HashSet<long?>();
+        private static readonly IDictionary<int?, Hash> milestones = new ConcurrentDictionary<int?, Hash>();
 
 		public static void updateLatestMilestone() // refactor
 		{
@@ -40,14 +41,14 @@ namespace com.iota.iri
 			foreach (long? pointer in StorageAddresses.instance().addressesOf(COORDINATOR))
 			{
 
-				if (analyzedMilestoneCandidates.add(pointer))
+				if (analyzedMilestoneCandidates.Add(pointer))
 				{
 
-					Transaction transaction = StorageTransactions.instance().loadTransaction(pointer);
+					Transaction transaction = StorageTransactions.instance().loadTransaction((long)pointer);
 					if (transaction.currentIndex == 0)
 					{
 
-						int index = (int) Converter.longValue(transaction.trits(), Transaction.TAG_TRINARY_OFFSET, 15);
+						int index = (int) Converter.longValue(transaction.Trits(), Transaction.TAG_TRINARY_OFFSET, 15);
 						if (index > latestMilestoneIndex)
 						{
 
@@ -55,7 +56,7 @@ namespace com.iota.iri
 							foreach (IList<Transaction> bundleTransactions in bundle.Transactions)
 							{
 
-								if (bundleTransactions.get(0).pointer == transaction.pointer)
+								if (bundleTransactions[0].pointer == transaction.pointer)
 								{
 
 									Transaction transaction2 = StorageTransactions.instance().loadTransaction(transaction.trunkTransactionPointer);
@@ -64,7 +65,7 @@ namespace com.iota.iri
 
 										int[] trunkTransactionTrits = new int[Transaction.TRUNK_TRANSACTION_TRINARY_SIZE];
 										Converter.getTrits(transaction.trunkTransaction, trunkTransactionTrits);
-										int[] signatureFragmentTrits = Arrays.copyOfRange(transaction.trits(), Transaction.SIGNATURE_MESSAGE_FRAGMENT_TRINARY_OFFSET, Transaction.SIGNATURE_MESSAGE_FRAGMENT_TRINARY_OFFSET + Transaction.SIGNATURE_MESSAGE_FRAGMENT_TRINARY_SIZE);
+										int[] signatureFragmentTrits = Arrays.copyOfRange(transaction.Trits(), Transaction.SIGNATURE_MESSAGE_FRAGMENT_TRINARY_OFFSET, Transaction.SIGNATURE_MESSAGE_FRAGMENT_TRINARY_OFFSET + Transaction.SIGNATURE_MESSAGE_FRAGMENT_TRINARY_SIZE);
 
 										int[] hash = ISS.address(ISS.digest(Arrays.copyOf(ISS.normalizedBundle(trunkTransactionTrits), ISS.NUMBER_OF_FRAGMENT_CHUNKS), signatureFragmentTrits));
 
@@ -76,11 +77,11 @@ namespace com.iota.iri
 											if ((indexCopy & 1) == 0)
 											{
 												curl.absorb(hash, 0, hash.Length);
-												curl.absorb(transaction2.trits(), i * Curl.HASH_LENGTH, Curl.HASH_LENGTH);
+												curl.absorb(transaction2.Trits(), i * Curl.HASH_LENGTH, Curl.HASH_LENGTH);
 											}
 											else
 											{
-												curl.absorb(transaction2.trits(), i * Curl.HASH_LENGTH, Curl.HASH_LENGTH);
+												curl.absorb(transaction2.Trits(), i * Curl.HASH_LENGTH, Curl.HASH_LENGTH);
 												curl.absorb(hash, 0, hash.Length);
 											}
 											curl.squeeze(hash, 0, hash.Length);
@@ -123,16 +124,16 @@ namespace com.iota.iri
 
 						StorageScratchpad.instance().clearAnalyzedTransactionsFlags();
 
-						LinkedList<long?> nonAnalyzedTransactions = new LinkedList<>();
-						nonAnalyzedTransactions.AddLast(StorageTransactions.instance().transactionPointer(milestone.bytes()));
+                        List<long?> nonAnalyzedTransactions = new List<long?>();
+						nonAnalyzedTransactions.Add(StorageTransactions.instance().transactionPointer(milestone.Sbytes()));
 						long? pointer;
-						while ((pointer = nonAnalyzedTransactions.RemoveFirst()) != null)
+						while ((pointer = nonAnalyzedTransactions.Poll()) != null)
 						{
 
-							if (StorageScratchpad.instance().AnalyzedTransactionFlag = pointer)
+                            if (StorageScratchpad.instance().setAnalyzedTransactionFlag(pointer))
 							{
 
-								Transaction transaction2 = StorageTransactions.instance().loadTransaction(pointer);
+								Transaction transaction2 = StorageTransactions.instance().loadTransaction((long)pointer);
 								if (transaction2.type == AbstractStorage.PREFILLED_SLOT)
 								{
 									solid = false;
@@ -141,8 +142,8 @@ namespace com.iota.iri
 								}
 								else
 								{
-									nonAnalyzedTransactions.AddLast(transaction2.trunkTransactionPointer);
-									nonAnalyzedTransactions.AddLast(transaction2.branchTransactionPointer);
+									nonAnalyzedTransactions.Add(transaction2.trunkTransactionPointer);
+									nonAnalyzedTransactions.Add(transaction2.branchTransactionPointer);
 								}
 							}
 						}
